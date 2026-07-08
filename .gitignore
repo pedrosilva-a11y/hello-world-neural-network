@@ -16,3 +16,6 @@
 .coverage
 coverage.xml
 htmlcov/
+
+# Local datasets
+data/*.csv
