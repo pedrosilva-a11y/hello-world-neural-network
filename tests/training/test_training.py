@@ -266,6 +266,7 @@ class TestRunTrainingIterations(unittest.TestCase):
         self.assertEqual(result["validation_predictions"].size, 0)
         self.assertEqual(result["train_loss"], [1.2, 0.8])
         self.assertEqual(result["train_accuracy"], [0.5, 1.0])
+        self.assertEqual(result["validation_loss"], [])
         self.assertEqual(result["validation_accuracy"], [])
 
         mock_initialize_weights_and_bias.assert_called_once_with(
@@ -284,8 +285,8 @@ class TestRunTrainingIterations(unittest.TestCase):
         self.assertIs(second_forward_call["W1"], updated_W1_iteration_1)
         self.assertIs(second_forward_call["b1"], updated_b1_iteration_1)
 
-    def test_run_training_iterations_tracks_validation_accuracy(self) -> None:
-        """Run validation evaluation during each training iteration."""
+    def test_run_training_iterations_tracks_validation_metrics(self) -> None:
+        """Run validation loss and accuracy during each training iteration."""
         x_train = np.array(
             [
                 [1.0, 2.0],
@@ -325,10 +326,47 @@ class TestRunTrainingIterations(unittest.TestCase):
         )
         updated_b1_iteration_2 = np.array([[0.02, -0.02]])
 
-        y_one_hot = np.array(
+        train_y_one_hot = np.array(
             [
                 [0.0, 1.0],
                 [1.0, 0.0],
+            ],
+        )
+        validation_y_one_hot_iteration_1 = np.array(
+            [
+                [1.0, 0.0],
+                [0.0, 1.0],
+            ],
+        )
+        validation_y_one_hot_iteration_2 = np.array(
+            [
+                [1.0, 0.0],
+                [0.0, 1.0],
+            ],
+        )
+
+        train_activation_iteration_1 = np.array(
+            [
+                [0.4, 0.6],
+                [0.7, 0.3],
+            ],
+        )
+        validation_activation_iteration_1 = np.array(
+            [
+                [0.7, 0.3],
+                [0.6, 0.4],
+            ],
+        )
+        train_activation_iteration_2 = np.array(
+            [
+                [0.3, 0.7],
+                [0.8, 0.2],
+            ],
+        )
+        validation_activation_iteration_2 = np.array(
+            [
+                [0.8, 0.2],
+                [0.3, 0.7],
             ],
         )
 
@@ -349,27 +387,27 @@ class TestRunTrainingIterations(unittest.TestCase):
                 side_effect=[
                     {
                         "Z": np.zeros((2, 2)),
-                        "A": np.zeros((2, 2)),
+                        "A": train_activation_iteration_1,
                         "predictions": train_predictions_iteration_1,
-                        "Y_one_hot": y_one_hot,
+                        "Y_one_hot": train_y_one_hot,
                     },
                     {
                         "Z": np.zeros((2, 2)),
-                        "A": np.zeros((2, 2)),
+                        "A": validation_activation_iteration_1,
                         "predictions": validation_predictions_iteration_1,
-                        "Y_one_hot": y_one_hot,
+                        "Y_one_hot": validation_y_one_hot_iteration_1,
                     },
                     {
                         "Z": np.zeros((2, 2)),
-                        "A": np.zeros((2, 2)),
+                        "A": train_activation_iteration_2,
                         "predictions": train_predictions_iteration_2,
-                        "Y_one_hot": y_one_hot,
+                        "Y_one_hot": train_y_one_hot,
                     },
                     {
                         "Z": np.zeros((2, 2)),
-                        "A": np.zeros((2, 2)),
+                        "A": validation_activation_iteration_2,
                         "predictions": validation_predictions_iteration_2,
-                        "Y_one_hot": y_one_hot,
+                        "Y_one_hot": validation_y_one_hot_iteration_2,
                     },
                 ],
             ) as mock_run_forward_pass,
@@ -383,6 +421,14 @@ class TestRunTrainingIterations(unittest.TestCase):
                     {"accuracy": 0.75},
                 ],
             ) as mock_run_evaluation,
+            patch.object(
+                training,
+                "categorical_cross_entropy",
+                side_effect=[
+                    {"loss": 1.4},
+                    {"loss": 0.9},
+                ],
+            ) as mock_categorical_cross_entropy,
             patch.object(
                 training,
                 "run_backward_pass",
@@ -425,10 +471,12 @@ class TestRunTrainingIterations(unittest.TestCase):
         )
         self.assertEqual(result["train_loss"], [1.2, 0.8])
         self.assertEqual(result["train_accuracy"], [0.5, 1.0])
+        self.assertEqual(result["validation_loss"], [1.4, 0.9])
         self.assertEqual(result["validation_accuracy"], [0.25, 0.75])
 
         self.assertEqual(mock_run_forward_pass.call_count, 4)
         self.assertEqual(mock_run_evaluation.call_count, 4)
+        self.assertEqual(mock_categorical_cross_entropy.call_count, 2)
 
         first_train_forward_call = mock_run_forward_pass.call_args_list[0].kwargs
         first_validation_forward_call = mock_run_forward_pass.call_args_list[1].kwargs
@@ -444,6 +492,30 @@ class TestRunTrainingIterations(unittest.TestCase):
         self.assertIs(second_train_forward_call["b1"], updated_b1_iteration_1)
         self.assertIs(second_validation_forward_call["W1"], updated_W1_iteration_1)
         self.assertIs(second_validation_forward_call["b1"], updated_b1_iteration_1)
+
+        first_validation_loss_call = mock_categorical_cross_entropy.call_args_list[
+            0
+        ].kwargs
+        second_validation_loss_call = mock_categorical_cross_entropy.call_args_list[
+            1
+        ].kwargs
+
+        self.assertIs(
+            first_validation_loss_call["y_one_hot"],
+            validation_y_one_hot_iteration_1,
+        )
+        self.assertIs(
+            first_validation_loss_call["y_pred"],
+            validation_activation_iteration_1,
+        )
+        self.assertIs(
+            second_validation_loss_call["y_one_hot"],
+            validation_y_one_hot_iteration_2,
+        )
+        self.assertIs(
+            second_validation_loss_call["y_pred"],
+            validation_activation_iteration_2,
+        )
 
     def test_run_training_iterations_raises_error_for_invalid_iterations(self) -> None:
         """Raise ValueError when num_iterations is less than one."""

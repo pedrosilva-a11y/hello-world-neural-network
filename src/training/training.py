@@ -6,6 +6,7 @@ import numpy as np
 
 from evaluation.evaluation import run_evaluation
 from training.backpropagation.backward_pass import run_backward_pass
+from training.error.categorial_cross_entropy import categorical_cross_entropy
 from training.forward.forward_pass import run_forward_pass
 from training.parameter.initialize import initialize_weights_and_bias
 
@@ -41,6 +42,7 @@ class TrainingIterationsOutput(TypedDict):
     train_loss: list[float]
     train_accuracy: list[float]
     validation_accuracy: list[float]
+    validation_loss: list[float]
 
 
 def run_initial_training_step(
@@ -110,9 +112,9 @@ def run_training_iterations(
     """Run multiple training iterations.
 
     The model parameters are initialized once. Each iteration evaluates the
-    current training predictions, optionally evaluates validation predictions,
-    runs one backward pass using only the training split, and carries the
-    updated parameters into the next iteration.
+    current training predictions, optionally evaluates validation predictions
+    and validation loss, runs one backward pass using only the training split,
+    and carries the updated parameters into the next iteration.
 
     Args:
         x_train: Training feature matrix.
@@ -125,7 +127,8 @@ def run_training_iterations(
 
     Returns:
         Dictionary containing final parameters, final predictions, train loss
-        history, train accuracy history, and validation accuracy history.
+        history, train accuracy history, validation loss history, and
+        validation accuracy history.
 
     Raises:
         ValueError: If num_iterations is less than 1.
@@ -147,6 +150,7 @@ def run_training_iterations(
 
     train_loss_history: list[float] = []
     train_accuracy_history: list[float] = []
+    validation_loss_history: list[float] = []
     validation_accuracy_history: list[float] = []
 
     train_predictions = np.array([])
@@ -178,6 +182,12 @@ def run_training_iterations(
                 ypred=validation_forward_output["predictions"],
             )
 
+            validation_loss_output = categorical_cross_entropy(
+                y_one_hot=validation_forward_output["Y_one_hot"],
+                y_pred=validation_forward_output["A"],
+            )
+
+            validation_loss_history.append(validation_loss_output["loss"])
             validation_accuracy_history.append(
                 validation_evaluation_output["accuracy"],
             )
@@ -206,5 +216,6 @@ def run_training_iterations(
         "validation_predictions": validation_predictions,
         "train_loss": train_loss_history,
         "train_accuracy": train_accuracy_history,
+        "validation_loss": validation_loss_history,
         "validation_accuracy": validation_accuracy_history,
     }

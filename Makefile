@@ -1,4 +1,4 @@
-.PHONY: lint type-check test coverage check format visualize distribution orchestrate plot-experiment
+.PHONY: lint type-check test coverage check format visualize distribution orchestrate plot-experiment plot-label-distribution
 
 ARGS ?=
 INDEX ?= 200
@@ -29,9 +29,6 @@ check: lint type-check coverage
 visualize:
 	PYTHONPATH=$(PYTHONPATH) uv run python scripts/visualization/visualize_input.py --index $(INDEX)
 
-distribution:
-	PYTHONPATH=$(PYTHONPATH) uv run python scripts/visualization/visualize_pixel_value_distribution.py --index $(INDEX) $(ARGS)
-
 orchestrate:
 	PYTHONPATH=$(PYTHONPATH) uv run python -m orchestration.orchestrator --experiment-name $(EXPERIMENT_NAME) --num-iterations $(NUM_ITERATIONS)
 
@@ -41,3 +38,6 @@ ifeq ($(SPLIT),yes)
 else
 	PYTHONPATH=$(PYTHONPATH) uv run python scripts/visualization/visualize_experiment_metrics.py --experiment-name $(EXPERIMENT_NAME)
 endif
+
+plot-label-distribution:
+	PYTHONPATH=$(PYTHONPATH) uv run python scripts/visualization/visualize_label_distribution.py --experiment-name $(EXPERIMENT_NAME)

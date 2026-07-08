@@ -2,6 +2,7 @@
 
 import argparse
 from pathlib import Path
+from statistics.get_label_distribution import get_label_distribution
 
 import numpy as np
 
@@ -107,7 +108,13 @@ def main() -> None:
         "metrics": {
             "train_loss": training_output["train_loss"],
             "train_accuracy": training_output["train_accuracy"],
+            "validation_loss": training_output["validation_loss"],
             "validation_accuracy": training_output["validation_accuracy"],
+        },
+        "data_distribution": {
+            "full_train": get_label_distribution(y=y_full_train_array),
+            "train": get_label_distribution(y=y_train_array),
+            "validation": get_label_distribution(y=y_validation_array),
         },
         "outputs": {
             "train_predictions_preview": training_output["train_predictions"][
@@ -134,6 +141,9 @@ def main() -> None:
 
     print("Final training accuracy:")
     print(training_output["train_accuracy"][-1])
+
+    print("Final validation categorical cross-entropy loss:")
+    print(training_output["validation_loss"][-1])
 
     print("Final validation accuracy:")
     print(training_output["validation_accuracy"][-1])
