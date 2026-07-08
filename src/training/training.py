@@ -36,9 +36,11 @@ class TrainingIterationsOutput(TypedDict):
 
     final_W1: np.ndarray
     final_b1: np.ndarray
-    predictions: np.ndarray
-    loss: list[float]
-    accuracy: list[float]
+    train_predictions: np.ndarray
+    validation_predictions: np.ndarray
+    train_loss: list[float]
+    train_accuracy: list[float]
+    validation_accuracy: list[float]
 
 
 def run_initial_training_step(
@@ -99,32 +101,41 @@ def run_initial_training_step(
 def run_training_iterations(
     x_train: np.ndarray,
     y_train: np.ndarray,
+    x_validation: np.ndarray | None = None,
+    y_validation: np.ndarray | None = None,
     output_neurons: int = OUTPUT_LAYER_NEURONS,
     learning_rate: float = DEFAULT_LEARNING_RATE,
     num_iterations: int = DEFAULT_NUM_ITERATIONS,
 ) -> TrainingIterationsOutput:
     """Run multiple training iterations.
 
-    The model parameters are initialized once. Then each iteration runs one
-    forward pass, evaluates the current predictions, runs one backward pass,
-    and carries the updated parameters into the next iteration.
+    The model parameters are initialized once. Each iteration evaluates the
+    current training predictions, optionally evaluates validation predictions,
+    runs one backward pass using only the training split, and carries the
+    updated parameters into the next iteration.
 
     Args:
         x_train: Training feature matrix.
         y_train: Training label array.
+        x_validation: Optional validation feature matrix.
+        y_validation: Optional validation label array.
         output_neurons: Number of output neurons/classes.
         learning_rate: Step size used to update the parameters.
         num_iterations: Number of training iterations to run.
 
     Returns:
-        Dictionary containing final parameters, final predictions, loss history,
-        and accuracy history.
+        Dictionary containing final parameters, final predictions, train loss
+        history, train accuracy history, and validation accuracy history.
 
     Raises:
         ValueError: If num_iterations is less than 1.
+        ValueError: If only one validation array is provided.
     """
     if num_iterations < 1:
         raise ValueError("num_iterations must be at least 1.")
+
+    if (x_validation is None) != (y_validation is None):
+        raise ValueError("x_validation and y_validation must be provided together.")
 
     parameters = initialize_weights_and_bias(
         x_train=x_train,
@@ -134,35 +145,56 @@ def run_training_iterations(
     current_W1 = parameters["W1"]
     current_b1 = parameters["b1"]
 
-    loss_history: list[float] = []
-    accuracy_history: list[float] = []
-    predictions = np.array([])
+    train_loss_history: list[float] = []
+    train_accuracy_history: list[float] = []
+    validation_accuracy_history: list[float] = []
+
+    train_predictions = np.array([])
+    validation_predictions = np.array([])
 
     for _iteration in range(num_iterations):
-        forward_output = run_forward_pass(
+        train_forward_output = run_forward_pass(
             x_train=x_train,
             y_train=y_train,
             W1=current_W1,
             b1=current_b1,
         )
 
-        evaluation_output = run_evaluation(
+        train_evaluation_output = run_evaluation(
             y=y_train,
-            ypred=forward_output["predictions"],
+            ypred=train_forward_output["predictions"],
         )
+
+        if x_validation is not None and y_validation is not None:
+            validation_forward_output = run_forward_pass(
+                x_train=x_validation,
+                y_train=y_validation,
+                W1=current_W1,
+                b1=current_b1,
+            )
+
+            validation_evaluation_output = run_evaluation(
+                y=y_validation,
+                ypred=validation_forward_output["predictions"],
+            )
+
+            validation_accuracy_history.append(
+                validation_evaluation_output["accuracy"],
+            )
+            validation_predictions = validation_forward_output["predictions"]
 
         backward_output = run_backward_pass(
             x_train=x_train,
-            y_one_hot=forward_output["Y_one_hot"],
-            activation=forward_output["A"],
+            y_one_hot=train_forward_output["Y_one_hot"],
+            activation=train_forward_output["A"],
             W1=current_W1,
             b1=current_b1,
             learning_rate=learning_rate,
         )
 
-        loss_history.append(backward_output["loss"])
-        accuracy_history.append(evaluation_output["accuracy"])
-        predictions = forward_output["predictions"]
+        train_loss_history.append(backward_output["loss"])
+        train_accuracy_history.append(train_evaluation_output["accuracy"])
+        train_predictions = train_forward_output["predictions"]
 
         current_W1 = backward_output["updated_W1"]
         current_b1 = backward_output["updated_b1"]
@@ -170,7 +202,9 @@ def run_training_iterations(
     return {
         "final_W1": current_W1,
         "final_b1": current_b1,
-        "predictions": predictions,
-        "loss": loss_history,
-        "accuracy": accuracy_history,
+        "train_predictions": train_predictions,
+        "validation_predictions": validation_predictions,
+        "train_loss": train_loss_history,
+        "train_accuracy": train_accuracy_history,
+        "validation_accuracy": validation_accuracy_history,
     }

@@ -143,7 +143,7 @@ class TestRunTrainingIterations(unittest.TestCase):
     """Tests for run_training_iterations."""
 
     def test_run_training_iterations_runs_multiple_training_passes(self) -> None:
-        """Run multiple forward, evaluation, backward, and update steps."""
+        """Run multiple training forward, evaluation, backward, and update steps."""
         x_train = np.array(
             [
                 [1.0, 2.0],
@@ -262,9 +262,11 @@ class TestRunTrainingIterations(unittest.TestCase):
 
         self.assertIs(result["final_W1"], updated_W1_iteration_2)
         self.assertIs(result["final_b1"], updated_b1_iteration_2)
-        self.assertIs(result["predictions"], predictions_iteration_2)
-        self.assertEqual(result["loss"], [1.2, 0.8])
-        self.assertEqual(result["accuracy"], [0.5, 1.0])
+        self.assertIs(result["train_predictions"], predictions_iteration_2)
+        self.assertEqual(result["validation_predictions"].size, 0)
+        self.assertEqual(result["train_loss"], [1.2, 0.8])
+        self.assertEqual(result["train_accuracy"], [0.5, 1.0])
+        self.assertEqual(result["validation_accuracy"], [])
 
         mock_initialize_weights_and_bias.assert_called_once_with(
             x_train=x_train,
@@ -282,6 +284,167 @@ class TestRunTrainingIterations(unittest.TestCase):
         self.assertIs(second_forward_call["W1"], updated_W1_iteration_1)
         self.assertIs(second_forward_call["b1"], updated_b1_iteration_1)
 
+    def test_run_training_iterations_tracks_validation_accuracy(self) -> None:
+        """Run validation evaluation during each training iteration."""
+        x_train = np.array(
+            [
+                [1.0, 2.0],
+                [3.0, 4.0],
+            ],
+        )
+        y_train = np.array([1, 0])
+        x_validation = np.array(
+            [
+                [5.0, 6.0],
+                [7.0, 8.0],
+            ],
+        )
+        y_validation = np.array([0, 1])
+
+        initial_W1 = np.array(
+            [
+                [0.1, 0.2],
+                [0.3, 0.4],
+            ],
+        )
+        initial_b1 = np.array([[0.0, 0.0]])
+
+        updated_W1_iteration_1 = np.array(
+            [
+                [0.11, 0.19],
+                [0.31, 0.39],
+            ],
+        )
+        updated_b1_iteration_1 = np.array([[0.01, -0.01]])
+
+        updated_W1_iteration_2 = np.array(
+            [
+                [0.12, 0.18],
+                [0.32, 0.38],
+            ],
+        )
+        updated_b1_iteration_2 = np.array([[0.02, -0.02]])
+
+        y_one_hot = np.array(
+            [
+                [0.0, 1.0],
+                [1.0, 0.0],
+            ],
+        )
+
+        train_predictions_iteration_1 = np.array([1, 0])
+        validation_predictions_iteration_1 = np.array([0, 0])
+        train_predictions_iteration_2 = np.array([1, 0])
+        validation_predictions_iteration_2 = np.array([0, 1])
+
+        with (
+            patch.object(
+                training,
+                "initialize_weights_and_bias",
+                return_value={"W1": initial_W1, "b1": initial_b1},
+            ),
+            patch.object(
+                training,
+                "run_forward_pass",
+                side_effect=[
+                    {
+                        "Z": np.zeros((2, 2)),
+                        "A": np.zeros((2, 2)),
+                        "predictions": train_predictions_iteration_1,
+                        "Y_one_hot": y_one_hot,
+                    },
+                    {
+                        "Z": np.zeros((2, 2)),
+                        "A": np.zeros((2, 2)),
+                        "predictions": validation_predictions_iteration_1,
+                        "Y_one_hot": y_one_hot,
+                    },
+                    {
+                        "Z": np.zeros((2, 2)),
+                        "A": np.zeros((2, 2)),
+                        "predictions": train_predictions_iteration_2,
+                        "Y_one_hot": y_one_hot,
+                    },
+                    {
+                        "Z": np.zeros((2, 2)),
+                        "A": np.zeros((2, 2)),
+                        "predictions": validation_predictions_iteration_2,
+                        "Y_one_hot": y_one_hot,
+                    },
+                ],
+            ) as mock_run_forward_pass,
+            patch.object(
+                training,
+                "run_evaluation",
+                side_effect=[
+                    {"accuracy": 0.5},
+                    {"accuracy": 0.25},
+                    {"accuracy": 1.0},
+                    {"accuracy": 0.75},
+                ],
+            ) as mock_run_evaluation,
+            patch.object(
+                training,
+                "run_backward_pass",
+                side_effect=[
+                    {
+                        "loss": 1.2,
+                        "dZ": np.zeros((2, 2)),
+                        "dW": np.zeros((2, 2)),
+                        "db": np.zeros((1, 2)),
+                        "updated_W1": updated_W1_iteration_1,
+                        "updated_b1": updated_b1_iteration_1,
+                    },
+                    {
+                        "loss": 0.8,
+                        "dZ": np.zeros((2, 2)),
+                        "dW": np.zeros((2, 2)),
+                        "db": np.zeros((1, 2)),
+                        "updated_W1": updated_W1_iteration_2,
+                        "updated_b1": updated_b1_iteration_2,
+                    },
+                ],
+            ),
+        ):
+            result = training.run_training_iterations(
+                x_train=x_train,
+                y_train=y_train,
+                x_validation=x_validation,
+                y_validation=y_validation,
+                output_neurons=2,
+                learning_rate=0.1,
+                num_iterations=2,
+            )
+
+        self.assertIs(result["final_W1"], updated_W1_iteration_2)
+        self.assertIs(result["final_b1"], updated_b1_iteration_2)
+        self.assertIs(result["train_predictions"], train_predictions_iteration_2)
+        self.assertIs(
+            result["validation_predictions"],
+            validation_predictions_iteration_2,
+        )
+        self.assertEqual(result["train_loss"], [1.2, 0.8])
+        self.assertEqual(result["train_accuracy"], [0.5, 1.0])
+        self.assertEqual(result["validation_accuracy"], [0.25, 0.75])
+
+        self.assertEqual(mock_run_forward_pass.call_count, 4)
+        self.assertEqual(mock_run_evaluation.call_count, 4)
+
+        first_train_forward_call = mock_run_forward_pass.call_args_list[0].kwargs
+        first_validation_forward_call = mock_run_forward_pass.call_args_list[1].kwargs
+        second_train_forward_call = mock_run_forward_pass.call_args_list[2].kwargs
+        second_validation_forward_call = mock_run_forward_pass.call_args_list[3].kwargs
+
+        self.assertIs(first_train_forward_call["W1"], initial_W1)
+        self.assertIs(first_train_forward_call["b1"], initial_b1)
+        self.assertIs(first_validation_forward_call["W1"], initial_W1)
+        self.assertIs(first_validation_forward_call["b1"], initial_b1)
+
+        self.assertIs(second_train_forward_call["W1"], updated_W1_iteration_1)
+        self.assertIs(second_train_forward_call["b1"], updated_b1_iteration_1)
+        self.assertIs(second_validation_forward_call["W1"], updated_W1_iteration_1)
+        self.assertIs(second_validation_forward_call["b1"], updated_b1_iteration_1)
+
     def test_run_training_iterations_raises_error_for_invalid_iterations(self) -> None:
         """Raise ValueError when num_iterations is less than one."""
         x_train = np.array(
@@ -297,6 +460,34 @@ class TestRunTrainingIterations(unittest.TestCase):
                 x_train=x_train,
                 y_train=y_train,
                 num_iterations=0,
+            )
+
+    def test_run_training_iterations_raises_error_for_partial_validation_data(
+        self,
+    ) -> None:
+        """Raise ValueError when only one validation array is provided."""
+        x_train = np.array(
+            [
+                [1.0, 2.0],
+                [3.0, 4.0],
+            ],
+        )
+        y_train = np.array([1, 0])
+        x_validation = np.array(
+            [
+                [5.0, 6.0],
+                [7.0, 8.0],
+            ],
+        )
+
+        with self.assertRaisesRegex(
+            ValueError,
+            "x_validation and y_validation must be provided together.",
+        ):
+            training.run_training_iterations(
+                x_train=x_train,
+                y_train=y_train,
+                x_validation=x_validation,
             )
 
 
