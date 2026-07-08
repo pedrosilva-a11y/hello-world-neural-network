@@ -33,16 +33,27 @@ def main() -> None:
         x_train=x_train_matrix,
         y_train=y_train_array,
     )
+
     z = training_output["Z"]
     a = training_output["A"]
     predictions = training_output["predictions"]
     y_one_hot = training_output["Y_one_hot"]
     loss = training_output["loss"]
+    dz = training_output["dZ"]
+    dw = training_output["dW"]
+    db = training_output["db"]
+    w1 = training_output["W1"]
+    b1 = training_output["b1"]
+    updated_w1 = training_output["updated_W1"]
+    updated_b1 = training_output["updated_b1"]
 
     print("Pipeline completed.")
     print("Train feature matrix shape:", x_train_matrix.shape)
     print("Train label array shape:", y_train_array.shape)
     print("Test feature matrix shape:", x_test_matrix.shape)
+
+    print("Initial W1 shape:", w1.shape)
+    print("Initial b1 shape:", b1.shape)
 
     print("Pre-activation Z shape:", z.shape)
     print("Pre-activation Z preview:")
@@ -68,6 +79,21 @@ def main() -> None:
 
     print("Categorical cross-entropy loss:")
     print(loss)
+
+    print("dZ shape:", dz.shape)
+    print("dZ preview:")
+    print(dz[:5, :10])
+
+    print("dW shape:", dw.shape)
+    print("dW preview:")
+    print(dw[:5, :10])
+
+    print("db shape:", db.shape)
+    print("db preview:")
+    print(db[:, :10])
+
+    print("Updated W1 shape:", updated_w1.shape)
+    print("Updated b1 shape:", updated_b1.shape)
 
 
 if __name__ == "__main__":

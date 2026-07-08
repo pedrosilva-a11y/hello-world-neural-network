@@ -4,18 +4,16 @@ from typing import TypedDict
 
 import numpy as np
 
-from training.activation.pre_activation import compute_pre_activation
-from training.activation.softmax import softmax
-from training.error.categorial_cross_entropy import categorical_cross_entropy
+from training.backpropagation.backward_pass import run_backward_pass
+from training.forward.forward_pass import run_forward_pass
 from training.parameter.initialize import initialize_weights_and_bias
-from training.prediction.get_predictions import get_predictions
-from training.prediction.label_one_hot_representation import label_one_hot_representation
 
 OUTPUT_LAYER_NEURONS = 10
+DEFAULT_LEARNING_RATE = 1e-5
 
 
 class InitialTrainingOutput(TypedDict):
-    """Output values from the initial training forward pass."""
+    """Output values from one full training pass."""
 
     W1: np.ndarray
     b1: np.ndarray
@@ -24,49 +22,63 @@ class InitialTrainingOutput(TypedDict):
     predictions: np.ndarray
     Y_one_hot: np.ndarray
     loss: float
+    dZ: np.ndarray
+    dW: np.ndarray
+    db: np.ndarray
+    updated_W1: np.ndarray
+    updated_b1: np.ndarray
 
 
 def run_initial_training_step(
     x_train: np.ndarray,
     y_train: np.ndarray,
     output_neurons: int = OUTPUT_LAYER_NEURONS,
+    learning_rate: float = DEFAULT_LEARNING_RATE,
 ) -> InitialTrainingOutput:
-    """Run initialization, forward pass, prediction, one-hot encoding, and loss.
+    """Run one full training pass.
 
     Args:
         x_train: Training feature matrix.
         y_train: Training label array.
         output_neurons: Number of output neurons/classes.
+        learning_rate: Step size used to update the parameters.
 
     Returns:
-        Dictionary containing W1, b1, Z, A, predictions, Y_one_hot, and loss.
+        Dictionary containing initial parameters, forward-pass outputs,
+        backward-pass outputs, and updated parameters.
     """
     parameters = initialize_weights_and_bias(
         x_train=x_train,
         h=output_neurons,
     )
 
-    pre_activation = compute_pre_activation(
-        x=x_train,
-        w=parameters["W1"],
-        b=parameters["b1"],
+    forward_output = run_forward_pass(
+        x_train=x_train,
+        y_train=y_train,
+        W1=parameters["W1"],
+        b1=parameters["b1"],
     )
 
-    activation = softmax(logits=pre_activation["Z"])
-    predictions = get_predictions(activation=activation["A"])
-    y_one_hot = label_one_hot_representation(labels=y_train)
-
-    loss = categorical_cross_entropy(
-        y_one_hot=y_one_hot,
-        y_pred=activation["A"],
+    backward_output = run_backward_pass(
+        x_train=x_train,
+        y_one_hot=forward_output["Y_one_hot"],
+        activation=forward_output["A"],
+        W1=parameters["W1"],
+        b1=parameters["b1"],
+        learning_rate=learning_rate,
     )
 
     return {
         "W1": parameters["W1"],
         "b1": parameters["b1"],
-        "Z": pre_activation["Z"],
-        "A": activation["A"],
-        "predictions": predictions["predictions"],
-        "Y_one_hot": y_one_hot,
-        "loss": loss["loss"],
+        "Z": forward_output["Z"],
+        "A": forward_output["A"],
+        "predictions": forward_output["predictions"],
+        "Y_one_hot": forward_output["Y_one_hot"],
+        "loss": backward_output["loss"],
+        "dZ": backward_output["dZ"],
+        "dW": backward_output["dW"],
+        "db": backward_output["db"],
+        "updated_W1": backward_output["updated_W1"],
+        "updated_b1": backward_output["updated_b1"],
     }

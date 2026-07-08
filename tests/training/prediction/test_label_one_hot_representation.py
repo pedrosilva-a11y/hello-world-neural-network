@@ -4,7 +4,7 @@ import unittest
 
 import numpy as np
 
-from training.prediction.label_one_hot_representation import label_one_hot_representation
+from training.encoding.label_one_hot_representation import label_one_hot_representation
 
 
 class TestLabelOneHotRepresentation(unittest.TestCase):
