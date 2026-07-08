@@ -19,3 +19,7 @@ htmlcov/
 
 # Local datasets
 data/*.csv
+
+# Experiment outputs
+results/*
+!results/.gitkeep

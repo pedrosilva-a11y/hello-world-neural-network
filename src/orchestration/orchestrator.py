@@ -1,12 +1,47 @@
 """Pipeline orchestrator for the Digit Recognizer project."""
 
+import argparse
+from pathlib import Path
+
 import numpy as np
 
 from data_loading.data_loading import load_digit_recognizer_data
 from preprocessing.preprocessing import preprocess_digit_recognizer_data
-from training.training import run_initial_training_step
+from training.training import (
+    DEFAULT_LEARNING_RATE,
+    DEFAULT_NUM_ITERATIONS,
+    run_training_iterations,
+)
+from utils.json_io import save_json
+
+ROOT_DIR = Path(__file__).resolve().parents[2]
+DEFAULT_EXPERIMENT_NAME = "experiment_1"
 
 DigitRecognizerPreprocessedData = tuple[np.ndarray, np.ndarray, np.ndarray]
+
+
+def parse_args() -> argparse.Namespace:
+    """Parse command-line arguments.
+
+    Returns:
+        Parsed command-line arguments.
+    """
+    parser = argparse.ArgumentParser(
+        description="Run the Digit Recognizer pipeline.",
+    )
+    parser.add_argument(
+        "--experiment-name",
+        default=DEFAULT_EXPERIMENT_NAME,
+        help="Name of the experiment folder under results/.",
+    )
+    parser.add_argument(
+        "--num-iterations",
+        type=int,
+        default=DEFAULT_NUM_ITERATIONS,
+        help="Number of training iterations to run.",
+    )
+
+    return parser.parse_args()
 
 
 def run_digit_recognizer_preprocessing_pipeline() -> DigitRecognizerPreprocessedData:
@@ -22,78 +57,50 @@ def run_digit_recognizer_preprocessing_pipeline() -> DigitRecognizerPreprocessed
 
 
 def main() -> None:
-    """Run the current Digit Recognizer pipeline and print the output shapes."""
-    print("Running Digit Recognizer pipeline...")
+    """Run the Digit Recognizer pipeline and save experiment summary."""
+    args = parse_args()
 
     x_train_matrix, y_train_array, x_test_matrix = (
         run_digit_recognizer_preprocessing_pipeline()
     )
 
-    training_output = run_initial_training_step(
+    training_output = run_training_iterations(
         x_train=x_train_matrix,
         y_train=y_train_array,
+        learning_rate=DEFAULT_LEARNING_RATE,
+        num_iterations=args.num_iterations,
     )
 
-    z = training_output["Z"]
-    a = training_output["A"]
-    predictions = training_output["predictions"]
-    y_one_hot = training_output["Y_one_hot"]
-    loss = training_output["loss"]
-    dz = training_output["dZ"]
-    dw = training_output["dW"]
-    db = training_output["db"]
-    w1 = training_output["W1"]
-    b1 = training_output["b1"]
-    updated_w1 = training_output["updated_W1"]
-    updated_b1 = training_output["updated_b1"]
+    summary = {
+        "experiment_name": args.experiment_name,
+        "metadata": {
+            "model": "single_layer_softmax_classifier",
+            "num_iterations": args.num_iterations,
+            "learning_rate": DEFAULT_LEARNING_RATE,
+            "train_shape": list(x_train_matrix.shape),
+            "test_shape": list(x_test_matrix.shape),
+        },
+        "metrics": {
+            "loss": training_output["loss"],
+            "accuracy": training_output["accuracy"],
+        },
+    }
 
-    print("Pipeline completed.")
-    print("Train feature matrix shape:", x_train_matrix.shape)
-    print("Train label array shape:", y_train_array.shape)
-    print("Test feature matrix shape:", x_test_matrix.shape)
+    summary_path = ROOT_DIR / "results" / args.experiment_name / "summary.json"
 
-    print("Initial W1 shape:", w1.shape)
-    print("Initial b1 shape:", b1.shape)
+    save_json(
+        data=summary,
+        file_path=summary_path,
+    )
 
-    print("Pre-activation Z shape:", z.shape)
-    print("Pre-activation Z preview:")
-    print(z[:5, :10])
+    print("Final categorical cross-entropy loss:")
+    print(training_output["loss"][-1])
 
-    print("Softmax activation A shape:", a.shape)
-    print("Softmax activation A preview:")
-    print(a[:5, :10])
+    print("Final accuracy:")
+    print(training_output["accuracy"][-1])
 
-    print("Softmax row-sum preview:")
-    print(np.sum(a[:5], axis=1))
-
-    print("Predictions shape:", predictions.shape)
-    print("Predictions preview:")
-    print(predictions[:10])
-
-    print("True labels preview:")
-    print(y_train_array[:10])
-
-    print("One-hot labels shape:", y_one_hot.shape)
-    print("One-hot labels preview:")
-    print(y_one_hot[:10, :10])
-
-    print("Categorical cross-entropy loss:")
-    print(loss)
-
-    print("dZ shape:", dz.shape)
-    print("dZ preview:")
-    print(dz[:5, :10])
-
-    print("dW shape:", dw.shape)
-    print("dW preview:")
-    print(dw[:5, :10])
-
-    print("db shape:", db.shape)
-    print("db preview:")
-    print(db[:, :10])
-
-    print("Updated W1 shape:", updated_w1.shape)
-    print("Updated b1 shape:", updated_b1.shape)
+    print("Summary saved to:")
+    print(summary_path)
 
 
 if __name__ == "__main__":
