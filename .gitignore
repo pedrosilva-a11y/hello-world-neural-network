@@ -1,2 +1,18 @@
 # Local development and virtual environments
-venv/
+.venv/
+
+# OS-generated files
+.DS_Store
+
+# Python bytecode and cache
+**/__pycache__/
+*.pyc
+
+# Tool caches
+.mypy_cache/
+.ruff_cache/
+
+# Coverage artifacts
+.coverage
+coverage.xml
+htmlcov/

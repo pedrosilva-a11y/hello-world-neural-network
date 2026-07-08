@@ -1,0 +1,74 @@
+[project]
+name = "hello-world-neural-network"
+version = "0.1.0"
+description = "A NumPy-based neural network built from scratch for the Kaggle Digit Recognizer project."
+readme = "README.md"
+requires-python = ">=3.11"
+
+dependencies = [
+    "matplotlib==3.10.9",
+    "numpy>=2.4.6",
+    "pandas==3.0.3",
+]
+
+[dependency-groups]
+dev = [
+    "coverage>=7.15.0",
+    "mypy>=2.1.0",
+    "ruff>=0.15.20",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+src = ["src", "tests", "scripts"]
+
+[tool.ruff.lint]
+select = [
+    "E",
+    "F",
+    "I",
+    "UP",
+    "B",
+    "SIM",
+    "D",
+]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.lint.per-file-ignores]
+"**/__init__.py" = ["D104"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+line-ending = "auto"
+
+[tool.mypy]
+python_version = "3.11"
+mypy_path = "src"
+strict = false
+ignore_missing_imports = true
+warn_unused_configs = true
+warn_return_any = true
+warn_unused_ignores = true
+no_implicit_optional = true
+check_untyped_defs = true
+
+[tool.coverage.run]
+branch = true
+source = ["src"]
+omit = [
+    "*/__init__.py",
+    "src/orchestration/*",
+]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = false
+fail_under = 80
+exclude_also = [
+    "if __name__ == .__main__.:",
+    "raise NotImplementedError",
+]
