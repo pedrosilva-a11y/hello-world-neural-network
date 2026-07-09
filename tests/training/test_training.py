@@ -13,6 +13,17 @@ class TestRunInitialTrainingStep(unittest.TestCase):
 
     def test_run_initial_training_step_coordinates_one_full_training_pass(self) -> None:
         """Initialize parameters, run forward pass, and run backward pass."""
+        model_config = {
+            "name": "single_layer_softmax_classifier",
+            "input_size": 2,
+            "output_size": 2,
+        }
+        training_config = {
+            "optimizer": "batch_gradient_descent",
+            "learning_rate": 0.1,
+            "num_iterations": 1,
+        }
+
         x_train = np.array(
             [
                 [1.0, 2.0],
@@ -102,8 +113,8 @@ class TestRunInitialTrainingStep(unittest.TestCase):
             result = training.run_initial_training_step(
                 x_train=x_train,
                 y_train=y_train,
-                output_neurons=2,
-                learning_rate=0.1,
+                model_config=model_config,
+                training_config=training_config,
             )
 
         self.assertIs(result["W1"], W1)
@@ -144,6 +155,17 @@ class TestRunTrainingIterations(unittest.TestCase):
 
     def test_run_training_iterations_runs_multiple_training_passes(self) -> None:
         """Run multiple training forward, evaluation, backward, and update steps."""
+        model_config = {
+            "name": "single_layer_softmax_classifier",
+            "input_size": 2,
+            "output_size": 2,
+        }
+        training_config = {
+            "optimizer": "batch_gradient_descent",
+            "num_iterations": 2,
+            "learning_rate": 0.1,
+        }
+
         x_train = np.array(
             [
                 [1.0, 2.0],
@@ -255,9 +277,8 @@ class TestRunTrainingIterations(unittest.TestCase):
             result = training.run_training_iterations(
                 x_train=x_train,
                 y_train=y_train,
-                output_neurons=2,
-                learning_rate=0.1,
-                num_iterations=2,
+                model_config=model_config,
+                training_config=training_config,
             )
 
         self.assertIs(result["final_W1"], updated_W1_iteration_2)
@@ -287,6 +308,17 @@ class TestRunTrainingIterations(unittest.TestCase):
 
     def test_run_training_iterations_tracks_validation_metrics(self) -> None:
         """Run validation loss and accuracy during each training iteration."""
+        model_config = {
+            "name": "single_layer_softmax_classifier",
+            "input_size": 2,
+            "output_size": 2,
+        }
+        training_config = {
+            "optimizer": "batch_gradient_descent",
+            "num_iterations": 2,
+            "learning_rate": 0.1,
+        }
+
         x_train = np.array(
             [
                 [1.0, 2.0],
@@ -457,9 +489,8 @@ class TestRunTrainingIterations(unittest.TestCase):
                 y_train=y_train,
                 x_validation=x_validation,
                 y_validation=y_validation,
-                output_neurons=2,
-                learning_rate=0.1,
-                num_iterations=2,
+                model_config=model_config,
+                training_config=training_config,
             )
 
         self.assertIs(result["final_W1"], updated_W1_iteration_2)
@@ -519,6 +550,17 @@ class TestRunTrainingIterations(unittest.TestCase):
 
     def test_run_training_iterations_raises_error_for_invalid_iterations(self) -> None:
         """Raise ValueError when num_iterations is less than one."""
+        model_config = {
+            "name": "single_layer_softmax_classifier",
+            "input_size": 2,
+            "output_size": 2,
+        }
+        training_config = {
+            "optimizer": "batch_gradient_descent",
+            "num_iterations": 0,
+            "learning_rate": 0.1,
+        }
+
         x_train = np.array(
             [
                 [1.0, 2.0],
@@ -531,13 +573,25 @@ class TestRunTrainingIterations(unittest.TestCase):
             training.run_training_iterations(
                 x_train=x_train,
                 y_train=y_train,
-                num_iterations=0,
+                model_config=model_config,
+                training_config=training_config,
             )
 
     def test_run_training_iterations_raises_error_for_partial_validation_data(
         self,
     ) -> None:
         """Raise ValueError when only one validation array is provided."""
+        model_config = {
+            "name": "single_layer_softmax_classifier",
+            "input_size": 2,
+            "output_size": 2,
+        }
+        training_config = {
+            "optimizer": "batch_gradient_descent",
+            "num_iterations": 2,
+            "learning_rate": 0.1,
+        }
+
         x_train = np.array(
             [
                 [1.0, 2.0],
@@ -560,6 +614,76 @@ class TestRunTrainingIterations(unittest.TestCase):
                 x_train=x_train,
                 y_train=y_train,
                 x_validation=x_validation,
+                model_config=model_config,
+                training_config=training_config,
+            )
+
+    def test_run_training_iterations_raises_error_for_unsupported_model_name(
+        self,
+    ) -> None:
+        """Raise ValueError when the configured model is unsupported."""
+        model_config = {
+            "name": "one_hidden_layer_relu_classifier",
+            "input_size": 2,
+            "output_size": 2,
+        }
+        training_config = {
+            "optimizer": "batch_gradient_descent",
+            "num_iterations": 2,
+            "learning_rate": 0.1,
+        }
+
+        x_train = np.array(
+            [
+                [1.0, 2.0],
+                [3.0, 4.0],
+            ],
+        )
+        y_train = np.array([1, 0])
+
+        with self.assertRaisesRegex(
+            ValueError,
+            "Unsupported model name: one_hidden_layer_relu_classifier",
+        ):
+            training.run_training_iterations(
+                x_train=x_train,
+                y_train=y_train,
+                model_config=model_config,
+                training_config=training_config,
+            )
+
+    def test_run_training_iterations_raises_error_for_unsupported_optimizer(
+        self,
+    ) -> None:
+        """Raise ValueError when the configured optimizer is unsupported."""
+        model_config = {
+            "name": "single_layer_softmax_classifier",
+            "input_size": 2,
+            "output_size": 2,
+        }
+        training_config = {
+            "optimizer": "adam",
+            "num_iterations": 2,
+            "learning_rate": 0.1,
+        }
+
+        x_train = np.array(
+            [
+                [1.0, 2.0],
+                [3.0, 4.0],
+            ],
+        )
+        y_train = np.array([1, 0])
+
+        with self.assertRaisesRegex(
+            ValueError,
+            "Unsupported optimizer: adam",
+        ):
+            training.run_training_iterations(
+                x_train=x_train,
+                y_train=y_train,
+                model_config=model_config,
+                training_config=training_config,
             )
 
 

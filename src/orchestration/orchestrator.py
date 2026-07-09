@@ -106,6 +106,10 @@ def main() -> None:
         config=config,
         section_name="data_splitting",
     )
+    model_config = get_config_section(
+        config=config,
+        section_name="model",
+    )
     training_config = get_config_section(
         config=config,
         section_name="training",
@@ -138,8 +142,8 @@ def main() -> None:
         y_train=y_train_array,
         x_validation=x_validation_matrix,
         y_validation=y_validation_array,
-        learning_rate=float(training_config["learning_rate"]),
-        num_iterations=int(training_config["num_iterations"]),
+        model_config=model_config,
+        training_config=training_config,
     )
 
     prediction_preview_size = int(outputs_config["prediction_preview_size"])
@@ -148,18 +152,13 @@ def main() -> None:
         "experiment_name": experiment_name,
         "config": config,
         "metadata": {
-            "model": training_config["model_name"],
-            "optimizer": training_config["optimizer"],
-            "num_iterations": training_config["num_iterations"],
-            "learning_rate": training_config["learning_rate"],
-            "normalize_pixels": preprocessing_config["normalize_pixels"],
-            "pixel_scale_value": preprocessing_config["pixel_scale_value"],
-            "validation_size": data_splitting_config["validation_size"],
-            "random_seed": data_splitting_config["random_seed"],
-            "full_train_shape": list(x_full_train_matrix.shape),
-            "train_shape": list(x_train_matrix.shape),
-            "validation_shape": list(x_validation_matrix.shape),
-            "test_shape": list(x_test_matrix.shape),
+            "config_path": str(args.config),
+            "data_shapes": {
+                "full_train": list(x_full_train_matrix.shape),
+                "train": list(x_train_matrix.shape),
+                "validation": list(x_validation_matrix.shape),
+                "test": list(x_test_matrix.shape),
+            },
         },
         "metrics": {
             "train_loss": training_output["train_loss"],

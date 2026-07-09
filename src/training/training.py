@@ -1,6 +1,6 @@
 """Training orchestration utilities for the Digit Recognizer model."""
 
-from typing import TypedDict
+from typing import Any, TypedDict
 
 import numpy as np
 
@@ -10,9 +10,8 @@ from training.error.categorial_cross_entropy import categorical_cross_entropy
 from training.forward.forward_pass import run_forward_pass
 from training.parameter.initialize import initialize_weights_and_bias
 
-OUTPUT_LAYER_NEURONS = 10
-DEFAULT_LEARNING_RATE = 1e-5
-DEFAULT_NUM_ITERATIONS = 5
+SUPPORTED_MODEL_NAME = "single_layer_softmax_classifier"
+SUPPORTED_OPTIMIZER = "batch_gradient_descent"
 
 
 class InitialTrainingOutput(TypedDict):
@@ -45,24 +44,56 @@ class TrainingIterationsOutput(TypedDict):
     validation_loss: list[float]
 
 
+def validate_training_configuration(
+    model_config: dict[str, Any],
+    training_config: dict[str, Any],
+) -> None:
+    """Validate supported model and training configuration values.
+
+    Args:
+        model_config: Model configuration section.
+        training_config: Training configuration section.
+
+    Raises:
+        ValueError: If the configured model is unsupported.
+        ValueError: If the configured optimizer is unsupported.
+    """
+    model_name = str(model_config["name"])
+    optimizer = str(training_config["optimizer"])
+
+    if model_name != SUPPORTED_MODEL_NAME:
+        raise ValueError(f"Unsupported model name: {model_name}")
+
+    if optimizer != SUPPORTED_OPTIMIZER:
+        raise ValueError(f"Unsupported optimizer: {optimizer}")
+
+
 def run_initial_training_step(
     x_train: np.ndarray,
     y_train: np.ndarray,
-    output_neurons: int = OUTPUT_LAYER_NEURONS,
-    learning_rate: float = DEFAULT_LEARNING_RATE,
+    model_config: dict[str, Any],
+    training_config: dict[str, Any],
 ) -> InitialTrainingOutput:
     """Run one full training pass.
 
     Args:
         x_train: Training feature matrix.
         y_train: Training label array.
-        output_neurons: Number of output neurons/classes.
-        learning_rate: Step size used to update the parameters.
+        model_config: Model configuration section.
+        training_config: Training configuration section.
 
     Returns:
         Dictionary containing initial parameters, forward-pass outputs,
         backward-pass outputs, and updated parameters.
     """
+    validate_training_configuration(
+        model_config=model_config,
+        training_config=training_config,
+    )
+
+    output_neurons = int(model_config["output_size"])
+    learning_rate = float(training_config["learning_rate"])
+
     parameters = initialize_weights_and_bias(
         x_train=x_train,
         h=output_neurons,
@@ -103,11 +134,10 @@ def run_initial_training_step(
 def run_training_iterations(
     x_train: np.ndarray,
     y_train: np.ndarray,
+    model_config: dict[str, Any],
+    training_config: dict[str, Any],
     x_validation: np.ndarray | None = None,
     y_validation: np.ndarray | None = None,
-    output_neurons: int = OUTPUT_LAYER_NEURONS,
-    learning_rate: float = DEFAULT_LEARNING_RATE,
-    num_iterations: int = DEFAULT_NUM_ITERATIONS,
 ) -> TrainingIterationsOutput:
     """Run multiple training iterations.
 
@@ -119,11 +149,10 @@ def run_training_iterations(
     Args:
         x_train: Training feature matrix.
         y_train: Training label array.
+        model_config: Model configuration section.
+        training_config: Training configuration section.
         x_validation: Optional validation feature matrix.
         y_validation: Optional validation label array.
-        output_neurons: Number of output neurons/classes.
-        learning_rate: Step size used to update the parameters.
-        num_iterations: Number of training iterations to run.
 
     Returns:
         Dictionary containing final parameters, final predictions, train loss
@@ -134,6 +163,15 @@ def run_training_iterations(
         ValueError: If num_iterations is less than 1.
         ValueError: If only one validation array is provided.
     """
+    validate_training_configuration(
+        model_config=model_config,
+        training_config=training_config,
+    )
+
+    output_neurons = int(model_config["output_size"])
+    learning_rate = float(training_config["learning_rate"])
+    num_iterations = int(training_config["num_iterations"])
+
     if num_iterations < 1:
         raise ValueError("num_iterations must be at least 1.")
 
