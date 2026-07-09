@@ -3,26 +3,18 @@
 import argparse
 from pathlib import Path
 from statistics.get_label_distribution import get_label_distribution
+from typing import Any, cast
 
 import numpy as np
 
 from data_loading.data_loading import load_digit_recognizer_data
 from data_splitting.data_splitting import split_digit_recognizer_training_data
-from data_splitting.stratified_train_validation_split import (
-    DEFAULT_RANDOM_SEED,
-    DEFAULT_VALIDATION_SIZE,
-)
 from preprocessing.preprocessing import preprocess_digit_recognizer_data
-from training.training import (
-    DEFAULT_LEARNING_RATE,
-    DEFAULT_NUM_ITERATIONS,
-    run_training_iterations,
-)
+from training.training import run_training_iterations
 from utils.json_io import save_json
+from utils.yaml_io import read_yaml
 
 ROOT_DIR = Path(__file__).resolve().parents[2]
-DEFAULT_EXPERIMENT_NAME = "experiment_1"
-PREDICTION_PREVIEW_SIZE = 20
 
 DigitRecognizerPreprocessedData = tuple[np.ndarray, np.ndarray, np.ndarray]
 
@@ -34,69 +26,106 @@ def parse_args() -> argparse.Namespace:
         Parsed command-line arguments.
     """
     parser = argparse.ArgumentParser(
-        description="Run the Digit Recognizer pipeline.",
+        description="Run the Digit Recognizer pipeline from a YAML config.",
     )
     parser.add_argument(
-        "--experiment-name",
-        default=DEFAULT_EXPERIMENT_NAME,
-        help="Name of the experiment folder under results/.",
-    )
-    parser.add_argument(
-        "--num-iterations",
-        type=int,
-        default=DEFAULT_NUM_ITERATIONS,
-        help="Number of training iterations to run.",
-    )
-    parser.add_argument(
-        "--normalize-pixels",
-        action="store_true",
-        help="Normalize pixel values from 0-255 to 0-1.",
-    )
-    parser.add_argument(
-        "--learning-rate",
-        type=float,
-        default=DEFAULT_LEARNING_RATE,
-        help="Learning rate used during training.",
+        "--config",
+        required=True,
+        help="Path to the experiment YAML config file.",
     )
 
     return parser.parse_args()
 
 
+def get_config_section(
+    config: dict[str, Any],
+    section_name: str,
+) -> dict[str, Any]:
+    """Get a required top-level config section.
+
+    Args:
+        config: Full experiment configuration.
+        section_name: Name of the required section.
+
+    Returns:
+        Requested config section.
+
+    Raises:
+        ValueError: If the section is missing or is not a dictionary.
+    """
+    section = config.get(section_name)
+
+    if not isinstance(section, dict):
+        msg = f"Missing or invalid config section: {section_name}"
+        raise ValueError(msg)
+
+    return cast(dict[str, Any], section)
+
+
 def run_digit_recognizer_preprocessing_pipeline(
-    normalize_pixels_enabled: bool = False,
+    data_loading_config: dict[str, Any],
+    preprocessing_config: dict[str, Any],
 ) -> DigitRecognizerPreprocessedData:
     """Run the data-loading and preprocessing steps in sequence.
 
     Args:
-        normalize_pixels_enabled: Whether to normalize pixel feature values.
+        data_loading_config: Data-loading configuration section.
+        preprocessing_config: Preprocessing configuration section.
 
     Returns:
         Tuple containing the training feature matrix, training label array,
         and testing feature matrix.
     """
-    loaded_data = load_digit_recognizer_data()
+    loaded_data = load_digit_recognizer_data(
+        data_loading_config=data_loading_config,
+    )
 
     return preprocess_digit_recognizer_data(
         loaded_data=loaded_data,
-        normalize=normalize_pixels_enabled,
+        preprocessing_config=preprocessing_config,
     )
 
 
 def main() -> None:
     """Run the Digit Recognizer pipeline and save experiment summary."""
     args = parse_args()
+    config = read_yaml(file_path=args.config)
+
+    experiment_name = str(config["experiment_name"])
+
+    data_loading_config = get_config_section(
+        config=config,
+        section_name="data_loading",
+    )
+
+    preprocessing_config = get_config_section(
+        config=config,
+        section_name="preprocessing",
+    )
+    data_splitting_config = get_config_section(
+        config=config,
+        section_name="data_splitting",
+    )
+    training_config = get_config_section(
+        config=config,
+        section_name="training",
+    )
+    outputs_config = get_config_section(
+        config=config,
+        section_name="outputs",
+    )
 
     x_full_train_matrix, y_full_train_array, x_test_matrix = (
         run_digit_recognizer_preprocessing_pipeline(
-            normalize_pixels_enabled=args.normalize_pixels,
+            data_loading_config=data_loading_config,
+            preprocessing_config=preprocessing_config,
         )
     )
 
     split_output = split_digit_recognizer_training_data(
         x=x_full_train_matrix,
         y=y_full_train_array,
-        validation_size=DEFAULT_VALIDATION_SIZE,
-        random_seed=DEFAULT_RANDOM_SEED,
+        data_splitting_config=data_splitting_config,
     )
 
     x_train_matrix = split_output["x_train"]
@@ -109,19 +138,24 @@ def main() -> None:
         y_train=y_train_array,
         x_validation=x_validation_matrix,
         y_validation=y_validation_array,
-        learning_rate=args.learning_rate,
-        num_iterations=args.num_iterations,
+        learning_rate=float(training_config["learning_rate"]),
+        num_iterations=int(training_config["num_iterations"]),
     )
 
+    prediction_preview_size = int(outputs_config["prediction_preview_size"])
+
     summary: dict[str, object] = {
-        "experiment_name": args.experiment_name,
+        "experiment_name": experiment_name,
+        "config": config,
         "metadata": {
-            "model": "single_layer_softmax_classifier",
-            "num_iterations": args.num_iterations,
-            "learning_rate": args.learning_rate,
-            "normalize_pixels": args.normalize_pixels,
-            "validation_size": DEFAULT_VALIDATION_SIZE,
-            "random_seed": DEFAULT_RANDOM_SEED,
+            "model": training_config["model_name"],
+            "optimizer": training_config["optimizer"],
+            "num_iterations": training_config["num_iterations"],
+            "learning_rate": training_config["learning_rate"],
+            "normalize_pixels": preprocessing_config["normalize_pixels"],
+            "pixel_scale_value": preprocessing_config["pixel_scale_value"],
+            "validation_size": data_splitting_config["validation_size"],
+            "random_seed": data_splitting_config["random_seed"],
             "full_train_shape": list(x_full_train_matrix.shape),
             "train_shape": list(x_train_matrix.shape),
             "validation_shape": list(x_validation_matrix.shape),
@@ -140,23 +174,26 @@ def main() -> None:
         },
         "outputs": {
             "train_predictions_preview": training_output["train_predictions"][
-                :PREDICTION_PREVIEW_SIZE
+                :prediction_preview_size
             ].tolist(),
             "validation_predictions_preview": training_output["validation_predictions"][
-                :PREDICTION_PREVIEW_SIZE
+                :prediction_preview_size
             ].tolist(),
             "validation_labels_preview": y_validation_array[
-                :PREDICTION_PREVIEW_SIZE
+                :prediction_preview_size
             ].tolist(),
         },
     }
 
-    summary_path = ROOT_DIR / "results" / args.experiment_name / "summary.json"
+    summary_path = ROOT_DIR / "results" / experiment_name / "summary.json"
 
     save_json(
         data=summary,
         file_path=summary_path,
     )
+
+    print("Experiment name:")
+    print(experiment_name)
 
     print("Final training categorical cross-entropy loss:")
     print(training_output["train_loss"][-1])

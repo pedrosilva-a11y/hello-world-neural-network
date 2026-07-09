@@ -14,6 +14,11 @@ class TestPreprocessing(unittest.TestCase):
 
     def test_preprocess_digit_recognizer_data_converts_loaded_data_to_arrays(self) -> None:
         """Convert loaded feature DataFrames and label Series into NumPy arrays."""
+        preprocessing_config = {
+            "normalize_pixels": False,
+            "pixel_scale_value": 255.0,
+        }
+
         x_train = pd.DataFrame(
             {
                 "pixel0": [0],
@@ -39,7 +44,7 @@ class TestPreprocessing(unittest.TestCase):
             result_x_train_matrix, result_y_train_array, result_x_test_matrix = (
                 preprocessing.preprocess_digit_recognizer_data(
                     loaded_data=(x_train, y_train, x_test),
-                    normalize=False,
+                    preprocessing_config=preprocessing_config,
                 )
             )
 
@@ -59,6 +64,11 @@ class TestPreprocessing(unittest.TestCase):
         self,
     ) -> None:
         """Normalize training and testing feature matrices when enabled."""
+        preprocessing_config = {
+            "normalize_pixels": True,
+            "pixel_scale_value": 255.0,
+        }
+
         x_train = pd.DataFrame(
             {
                 "pixel0": [0],
@@ -94,7 +104,7 @@ class TestPreprocessing(unittest.TestCase):
             result_x_train_matrix, result_y_train_array, result_x_test_matrix = (
                 preprocessing.preprocess_digit_recognizer_data(
                     loaded_data=(x_train, y_train, x_test),
-                    normalize=True,
+                    preprocessing_config=preprocessing_config,
                 )
             )
 
@@ -112,8 +122,68 @@ class TestPreprocessing(unittest.TestCase):
 
         mock_normalize_pixels.assert_has_calls(
             [
-                call(x=x_train_matrix),
-                call(x=x_test_matrix),
+                call(x=x_train_matrix, pixel_scale_value=255.0),
+                call(x=x_test_matrix, pixel_scale_value=255.0),
+            ]
+        )
+        self.assertEqual(mock_normalize_pixels.call_count, 2)
+
+    def test_preprocess_digit_recognizer_data_uses_configured_pixel_scale_value(
+        self,
+    ) -> None:
+        """Pass the configured pixel scale value to pixel normalization."""
+        preprocessing_config = {
+            "normalize_pixels": True,
+            "pixel_scale_value": 100.0,
+        }
+
+        x_train = pd.DataFrame(
+            {
+                "pixel0": [0],
+                "pixel1": [100],
+            }
+        )
+        y_train = pd.Series([7], name="label")
+        x_test = pd.DataFrame(
+            {
+                "pixel0": [25],
+                "pixel1": [50],
+            }
+        )
+
+        x_train_matrix = np.array([[0, 100]])
+        x_test_matrix = np.array([[25, 50]])
+
+        normalized_x_train_matrix = np.array([[0.0, 1.0]])
+        normalized_x_test_matrix = np.array([[0.25, 0.5]])
+
+        with (
+            patch.object(
+                preprocessing,
+                "convert_dataframe_to_matrix",
+                side_effect=[x_train_matrix, x_test_matrix],
+            ),
+            patch.object(
+                preprocessing,
+                "normalize_pixels",
+                side_effect=[normalized_x_train_matrix, normalized_x_test_matrix],
+            ) as mock_normalize_pixels,
+        ):
+            result_x_train_matrix, result_y_train_array, result_x_test_matrix = (
+                preprocessing.preprocess_digit_recognizer_data(
+                    loaded_data=(x_train, y_train, x_test),
+                    preprocessing_config=preprocessing_config,
+                )
+            )
+
+        self.assertIs(result_x_train_matrix, normalized_x_train_matrix)
+        np.testing.assert_array_equal(result_y_train_array, np.array([7]))
+        self.assertIs(result_x_test_matrix, normalized_x_test_matrix)
+
+        mock_normalize_pixels.assert_has_calls(
+            [
+                call(x=x_train_matrix, pixel_scale_value=100.0),
+                call(x=x_test_matrix, pixel_scale_value=100.0),
             ]
         )
         self.assertEqual(mock_normalize_pixels.call_count, 2)
@@ -122,6 +192,11 @@ class TestPreprocessing(unittest.TestCase):
         self,
     ) -> None:
         """Skip pixel normalization when normalization is disabled."""
+        preprocessing_config = {
+            "normalize_pixels": False,
+            "pixel_scale_value": 255.0,
+        }
+
         x_train = pd.DataFrame(
             {
                 "pixel0": [0],
@@ -150,7 +225,7 @@ class TestPreprocessing(unittest.TestCase):
             result_x_train_matrix, result_y_train_array, result_x_test_matrix = (
                 preprocessing.preprocess_digit_recognizer_data(
                     loaded_data=(x_train, y_train, x_test),
-                    normalize=False,
+                    preprocessing_config=preprocessing_config,
                 )
             )
 

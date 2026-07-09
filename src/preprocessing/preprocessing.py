@@ -1,6 +1,6 @@
 """Preprocessing step for the Kaggle Digit Recognizer datasets."""
 
-from typing import cast
+from typing import Any, cast
 
 import numpy as np
 import pandas as pd
@@ -14,7 +14,7 @@ DigitRecognizerPreprocessedData = tuple[np.ndarray, np.ndarray, np.ndarray]
 
 def preprocess_digit_recognizer_data(
     loaded_data: DigitRecognizerLoadedData,
-    normalize: bool = False,
+    preprocessing_config: dict[str, Any],
 ) -> DigitRecognizerPreprocessedData:
     """Preprocess the output of the Digit Recognizer data-loading step.
 
@@ -24,7 +24,7 @@ def preprocess_digit_recognizer_data(
     Args:
         loaded_data: Tuple containing training features, training labels, and
             testing features.
-        normalize: Whether to normalize pixel feature values.
+        preprocessing_config: Preprocessing configuration section.
 
     Returns:
         Tuple containing the training feature matrix, training label array,
@@ -36,8 +36,16 @@ def preprocess_digit_recognizer_data(
     y_train_array = cast(np.ndarray, y_train.to_numpy())
     x_test_matrix = convert_dataframe_to_matrix(df=x_test)
 
-    if normalize:
-        x_train_matrix = normalize_pixels(x=x_train_matrix)
-        x_test_matrix = normalize_pixels(x=x_test_matrix)
+    if bool(preprocessing_config["normalize_pixels"]):
+        pixel_scale_value = float(preprocessing_config["pixel_scale_value"])
+
+        x_train_matrix = normalize_pixels(
+            x=x_train_matrix,
+            pixel_scale_value=pixel_scale_value,
+        )
+        x_test_matrix = normalize_pixels(
+            x=x_test_matrix,
+            pixel_scale_value=pixel_scale_value,
+        )
 
     return x_train_matrix, y_train_array, x_test_matrix

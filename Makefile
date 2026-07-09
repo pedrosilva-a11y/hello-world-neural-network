@@ -2,17 +2,9 @@
 
 ARGS ?=
 INDEX ?= 200
-EXPERIMENT_NAME ?= experiment_1
-NUM_ITERATIONS ?= 5
+CONFIG ?= conf/experiments/softmax_baseline.yaml
+EXPERIMENT_NAME ?= softmax_baseline
 PYTHONPATH := src
-
-NORMALIZE ?= no
-NORMALIZE_FLAG :=
-ifeq ($(NORMALIZE),yes)
-NORMALIZE_FLAG := --normalize-pixels
-endif
-
-LEARNING_RATE ?= 1e-5
 
 lint:
 	PYTHONPATH=$(PYTHONPATH) uv run ruff check .
@@ -32,12 +24,11 @@ coverage:
 
 check: lint type-check coverage
 
-
 visualize:
 	PYTHONPATH=$(PYTHONPATH) uv run python scripts/visualization/visualize_input.py --index $(INDEX)
 
 orchestrate:
-	PYTHONPATH=$(PYTHONPATH) uv run python -m orchestration.orchestrator --experiment-name $(EXPERIMENT_NAME) --num-iterations $(NUM_ITERATIONS) --learning-rate $(LEARNING_RATE) $(NORMALIZE_FLAG)
+	PYTHONPATH=$(PYTHONPATH) uv run python -m orchestration.orchestrator --config $(CONFIG)
 
 plot-experiment:
 ifeq ($(SPLIT),yes)

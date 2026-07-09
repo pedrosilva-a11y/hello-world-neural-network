@@ -11,7 +11,7 @@ class TestNormalizePixels(unittest.TestCase):
     """Tests for normalize_pixels."""
 
     def test_normalize_pixels_scales_values_to_zero_one_range(self) -> None:
-        """It should divide raw pixel values by 255."""
+        """It should divide raw pixel values by the default scale value."""
         x = np.array(
             [
                 [0, 127.5, 255],
@@ -25,6 +25,29 @@ class TestNormalizePixels(unittest.TestCase):
             [
                 [0.0, 0.5, 1.0],
                 [64 / 255.0, 128 / 255.0, 192 / 255.0],
+            ]
+        )
+
+        np.testing.assert_allclose(result, expected)
+
+    def test_normalize_pixels_uses_custom_pixel_scale_value(self) -> None:
+        """It should divide raw pixel values by the configured scale value."""
+        x = np.array(
+            [
+                [0, 50, 100],
+                [25, 75, 100],
+            ]
+        )
+
+        result = normalize_pixels(
+            x=x,
+            pixel_scale_value=100.0,
+        )
+
+        expected = np.array(
+            [
+                [0.0, 0.5, 1.0],
+                [0.25, 0.75, 1.0],
             ]
         )
 

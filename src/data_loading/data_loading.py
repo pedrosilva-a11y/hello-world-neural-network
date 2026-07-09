@@ -1,6 +1,7 @@
 """Data-loading step for the Kaggle Digit Recognizer datasets."""
 
 from pathlib import Path
+from typing import Any
 
 import pandas as pd
 
@@ -9,36 +10,52 @@ from data_loading.utils.split_features_and_labels import split_features_and_labe
 
 ROOT_DIR = Path(__file__).resolve().parents[2]
 
-TRAIN_SET_PATH = ROOT_DIR / "data" / "train.csv"
-TEST_SET_PATH = ROOT_DIR / "data" / "test.csv"
-
 DigitRecognizerData = tuple[pd.DataFrame, pd.Series, pd.DataFrame]
 
 
-def load_digit_recognizer_data() -> DigitRecognizerData:
-    """Load the Kaggle Digit Recognizer train and test datasets.
+def resolve_project_path(file_path: str | Path) -> Path:
+    """Resolve a file path relative to the project root when needed.
+
+    Args:
+        file_path: Absolute path or project-root-relative path.
 
     Returns:
-        A tuple containing training pixel features, training labels, and testing pixel features.
+        Resolved file path.
     """
-    df_train = read_csv(file_path=TRAIN_SET_PATH)
-    df_test = read_csv(file_path=TEST_SET_PATH)
+    path = Path(file_path)
 
-    x_train, y_train = split_features_and_labels(df=df_train)
+    if path.is_absolute():
+        return path
+
+    return ROOT_DIR / path
+
+
+def load_digit_recognizer_data(
+    data_loading_config: dict[str, Any],
+) -> DigitRecognizerData:
+    """Load the Kaggle Digit Recognizer train and test datasets.
+
+    Args:
+        data_loading_config: Data-loading configuration section.
+
+    Returns:
+        A tuple containing training pixel features, training labels, and testing
+        pixel features.
+    """
+    training_path = resolve_project_path(
+        file_path=str(data_loading_config["training_path"]),
+    )
+    testing_path = resolve_project_path(
+        file_path=str(data_loading_config["testing_path"]),
+    )
+    label_column = str(data_loading_config["label_column"])
+
+    df_train = read_csv(file_path=training_path)
+    df_test = read_csv(file_path=testing_path)
+
+    x_train, y_train = split_features_and_labels(
+        df=df_train,
+        label_column=label_column,
+    )
 
     return x_train, y_train, df_test
-
-
-def main() -> None:
-    """Load the datasets and print their shapes for manual inspection."""
-    print("Loading data...")
-
-    x_train, y_train, x_test = load_digit_recognizer_data()
-
-    print("Train pixel shape:", x_train.shape)
-    print("Train label shape:", y_train.shape)
-    print("Test pixel shape:", x_test.shape)
-
-
-if __name__ == "__main__":
-    main()
