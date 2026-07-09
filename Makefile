@@ -6,6 +6,13 @@ EXPERIMENT_NAME ?= experiment_1
 NUM_ITERATIONS ?= 5
 PYTHONPATH := src
 
+NORMALIZE ?= no
+NORMALIZE_FLAG :=
+ifeq ($(NORMALIZE),yes)
+NORMALIZE_FLAG := --normalize-pixels
+endif
+
+LEARNING_RATE ?= 1e-5
 
 lint:
 	PYTHONPATH=$(PYTHONPATH) uv run ruff check .
@@ -30,7 +37,7 @@ visualize:
 	PYTHONPATH=$(PYTHONPATH) uv run python scripts/visualization/visualize_input.py --index $(INDEX)
 
 orchestrate:
-	PYTHONPATH=$(PYTHONPATH) uv run python -m orchestration.orchestrator --experiment-name $(EXPERIMENT_NAME) --num-iterations $(NUM_ITERATIONS)
+	PYTHONPATH=$(PYTHONPATH) uv run python -m orchestration.orchestrator --experiment-name $(EXPERIMENT_NAME) --num-iterations $(NUM_ITERATIONS) --learning-rate $(LEARNING_RATE) $(NORMALIZE_FLAG)
 
 plot-experiment:
 ifeq ($(SPLIT),yes)

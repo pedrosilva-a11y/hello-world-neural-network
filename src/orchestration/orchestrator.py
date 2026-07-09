@@ -47,12 +47,28 @@ def parse_args() -> argparse.Namespace:
         default=DEFAULT_NUM_ITERATIONS,
         help="Number of training iterations to run.",
     )
+    parser.add_argument(
+        "--normalize-pixels",
+        action="store_true",
+        help="Normalize pixel values from 0-255 to 0-1.",
+    )
+    parser.add_argument(
+        "--learning-rate",
+        type=float,
+        default=DEFAULT_LEARNING_RATE,
+        help="Learning rate used during training.",
+    )
 
     return parser.parse_args()
 
 
-def run_digit_recognizer_preprocessing_pipeline() -> DigitRecognizerPreprocessedData:
+def run_digit_recognizer_preprocessing_pipeline(
+    normalize_pixels_enabled: bool = False,
+) -> DigitRecognizerPreprocessedData:
     """Run the data-loading and preprocessing steps in sequence.
+
+    Args:
+        normalize_pixels_enabled: Whether to normalize pixel feature values.
 
     Returns:
         Tuple containing the training feature matrix, training label array,
@@ -60,7 +76,10 @@ def run_digit_recognizer_preprocessing_pipeline() -> DigitRecognizerPreprocessed
     """
     loaded_data = load_digit_recognizer_data()
 
-    return preprocess_digit_recognizer_data(loaded_data=loaded_data)
+    return preprocess_digit_recognizer_data(
+        loaded_data=loaded_data,
+        normalize=normalize_pixels_enabled,
+    )
 
 
 def main() -> None:
@@ -68,7 +87,9 @@ def main() -> None:
     args = parse_args()
 
     x_full_train_matrix, y_full_train_array, x_test_matrix = (
-        run_digit_recognizer_preprocessing_pipeline()
+        run_digit_recognizer_preprocessing_pipeline(
+            normalize_pixels_enabled=args.normalize_pixels,
+        )
     )
 
     split_output = split_digit_recognizer_training_data(
@@ -88,7 +109,7 @@ def main() -> None:
         y_train=y_train_array,
         x_validation=x_validation_matrix,
         y_validation=y_validation_array,
-        learning_rate=DEFAULT_LEARNING_RATE,
+        learning_rate=args.learning_rate,
         num_iterations=args.num_iterations,
     )
 
@@ -97,7 +118,8 @@ def main() -> None:
         "metadata": {
             "model": "single_layer_softmax_classifier",
             "num_iterations": args.num_iterations,
-            "learning_rate": DEFAULT_LEARNING_RATE,
+            "learning_rate": args.learning_rate,
+            "normalize_pixels": args.normalize_pixels,
             "validation_size": DEFAULT_VALIDATION_SIZE,
             "random_seed": DEFAULT_RANDOM_SEED,
             "full_train_shape": list(x_full_train_matrix.shape),
