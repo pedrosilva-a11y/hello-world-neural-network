@@ -18,7 +18,7 @@ data_splitting:
 model:
   name: single_layer_softmax_classifier
   input_size: 784
-  output_size: 10
+  neurons_profile: [10]
 
 training:
   optimizer: batch_gradient_descent

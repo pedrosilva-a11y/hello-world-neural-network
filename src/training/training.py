@@ -91,12 +91,12 @@ def run_initial_training_step(
         training_config=training_config,
     )
 
-    output_neurons = int(model_config["output_size"])
+    neurons_profile = list(model_config["neurons_profile"])
     learning_rate = float(training_config["learning_rate"])
 
     parameters = initialize_weights_and_bias(
         x_train=x_train,
-        h=output_neurons,
+        neurons_profile=neurons_profile,
     )
 
     forward_output = run_forward_pass(
@@ -168,7 +168,7 @@ def run_training_iterations(
         training_config=training_config,
     )
 
-    output_neurons = int(model_config["output_size"])
+    neurons_profile = list(model_config["neurons_profile"])
     learning_rate = float(training_config["learning_rate"])
     num_iterations = int(training_config["num_iterations"])
 
@@ -180,7 +180,7 @@ def run_training_iterations(
 
     parameters = initialize_weights_and_bias(
         x_train=x_train,
-        h=output_neurons,
+        neurons_profile=neurons_profile,
     )
 
     current_W1 = parameters["W1"]
