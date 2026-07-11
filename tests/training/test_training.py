@@ -744,6 +744,109 @@ class TestRunTrainingIterations(unittest.TestCase):
         self.assertEqual(result["train_loss"], [0.5])
         self.assertEqual(result["train_accuracy"], [1.0])
 
+    def test_run_training_iterations_accepts_multi_layer_relu_model(self) -> None:
+        """Accept the multi-layer ReLU model configuration."""
+        model_config = {
+            "name": "multi_layer_relu_classifier",
+            "input_size": 2,
+            "neurons_profile": [3, 3, 2],
+        }
+        training_config = {
+            "optimizer": "batch_gradient_descent",
+            "num_iterations": 1,
+            "learning_rate": 0.1,
+        }
+
+        x_train = np.array(
+            [
+                [1.0, 2.0],
+                [3.0, 4.0],
+            ],
+        )
+        y_train = np.array([1, 0])
+        parameters = {
+            "W1": np.zeros((2, 3)),
+            "b1": np.zeros((1, 3)),
+            "W2": np.zeros((3, 3)),
+            "b2": np.zeros((1, 3)),
+            "W3": np.zeros((3, 2)),
+            "b3": np.zeros((1, 2)),
+        }
+
+        with (
+            patch.object(
+                training,
+                "initialize_weights_and_bias",
+                return_value=parameters,
+            ) as mock_initialize_weights_and_bias,
+            patch.object(
+                training,
+                "run_forward_pass",
+                return_value={
+                    "Z1": np.zeros((2, 3)),
+                    "A1": np.zeros((2, 3)),
+                    "Z2": np.zeros((2, 3)),
+                    "A2": np.zeros((2, 3)),
+                    "Z3": np.zeros((2, 2)),
+                    "A3": np.array(
+                        [
+                            [0.4, 0.6],
+                            [0.7, 0.3],
+                        ],
+                    ),
+                    "predictions": np.array([1, 0]),
+                    "Y_one_hot": np.array(
+                        [
+                            [0.0, 1.0],
+                            [1.0, 0.0],
+                        ],
+                    ),
+                },
+            ) as mock_run_forward_pass,
+            patch.object(
+                training,
+                "run_evaluation",
+                return_value={"accuracy": 1.0},
+            ),
+            patch.object(
+                training,
+                "run_backward_pass",
+                return_value={
+                    "loss": 0.5,
+                    "gradients": {},
+                    "parameters": parameters,
+                },
+            ) as mock_run_backward_pass,
+        ):
+            result = training.run_training_iterations(
+                x_train=x_train,
+                y_train=y_train,
+                model_config=model_config,
+                training_config=training_config,
+            )
+
+        self.assertIs(result["final_parameters"], parameters)
+        self.assertEqual(result["train_loss"], [0.5])
+        self.assertEqual(result["train_accuracy"], [1.0])
+
+        mock_initialize_weights_and_bias.assert_called_once_with(
+            x_train=x_train,
+            neurons_profile=[3, 3, 2],
+        )
+        mock_run_forward_pass.assert_called_once_with(
+            x_train=x_train,
+            y_train=y_train,
+            parameters=parameters,
+            neurons_profile=[3, 3, 2],
+        )
+        mock_run_backward_pass.assert_called_once_with(
+            x_train=x_train,
+            forward_pass_results=mock_run_forward_pass.return_value,
+            parameters=parameters,
+            neurons_profile=[3, 3, 2],
+            learning_rate=0.1,
+        )
+
     def test_run_training_iterations_raises_error_for_unsupported_optimizer(
         self,
     ) -> None:

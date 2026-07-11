@@ -13,6 +13,7 @@ from training.parameter.initialize import initialize_weights_and_bias
 SUPPORTED_MODEL_NAMES = {
     "single_layer_softmax_classifier",
     "one_hidden_layer_relu_classifier",
+    "multi_layer_relu_classifier"
 }
 SUPPORTED_OPTIMIZER = "batch_gradient_descent"
 

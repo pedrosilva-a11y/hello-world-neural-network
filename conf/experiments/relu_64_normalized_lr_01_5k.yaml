@@ -1,4 +1,4 @@
-experiment_name: relu_16_normalized_lr_01_05k
+experiment_name: relu_64_normalized_lr_01_5k
 
 data_loading:
   training_path: data/train.csv
@@ -18,7 +18,7 @@ data_splitting:
 model:
   name: one_hidden_layer_relu_classifier
   input_size: 784
-  neurons_profile: [32, 10]
+  neurons_profile: [64, 10]
 
 training:
   optimizer: batch_gradient_descent
