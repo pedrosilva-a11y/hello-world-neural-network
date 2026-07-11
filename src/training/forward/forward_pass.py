@@ -1,54 +1,59 @@
 """Forward pass orchestration for the Digit Recognizer model."""
 
-from typing import TypedDict
-
 import numpy as np
 
 from training.activation.pre_activation import compute_pre_activation
+from training.activation.relu import relu
 from training.activation.softmax import softmax
 from training.encoding.label_one_hot_representation import label_one_hot_representation
 from training.prediction.get_predictions import get_predictions
 
 
-class ForwardPassOutput(TypedDict):
-    """Output values from the forward pass."""
-
-    Z: np.ndarray
-    A: np.ndarray
-    predictions: np.ndarray
-    Y_one_hot: np.ndarray
-
-
 def run_forward_pass(
     x_train: np.ndarray,
     y_train: np.ndarray,
-    W1: np.ndarray,
-    b1: np.ndarray,
-) -> ForwardPassOutput:
+    parameters: dict[str, np.ndarray],
+    neurons_profile: list[int],
+) -> dict[str, np.ndarray]:
     """Run the model forward pass.
 
     Args:
         x_train: Training feature matrix.
         y_train: Training label array.
-        W1: Weight matrix.
-        b1: Bias vector.
+        parameters: Dictionary containing the weights and bias parameters for each layer.
+        neurons_profile: Quantity of neurons per layer, in order.
 
     Returns:
-        Dictionary containing Z, A, predictions, and Y_one_hot.
+        Dictionary containing Z, and A for all layers. Also predictions and
+            the one-hot sparse representation of the true labels.
     """
-    pre_activation = compute_pre_activation(
-        x=x_train,
-        w=W1,
-        b=b1,
-    )
+    forward_pass_results: dict[str, np.ndarray] = {}
 
-    activation = softmax(logits=pre_activation["Z"])
-    predictions = get_predictions(activation=activation["A"])
+    layers = len(neurons_profile)
+    activation=x_train
+
+    for i in range(layers):
+
+        pre_activation = compute_pre_activation(
+                a=activation,
+                w=parameters[f"W{i+1}"],
+                b=parameters[f"b{i+1}"],
+                layer_number=i+1,
+            )
+
+        forward_pass_results[f"Z{i+1}"] = pre_activation[f"Z{i+1}"]
+
+        if i != (layers - 1):
+            activation = relu(pre_activation=pre_activation[f"Z{i+1}"])
+        else:
+            activation = softmax(logits=pre_activation[f"Z{i+1}"])
+
+        forward_pass_results[f"A{i+1}"] = activation
+
+    predictions = get_predictions(activation=forward_pass_results[f"A{layers}"])
     y_one_hot = label_one_hot_representation(labels=y_train)
 
-    return {
-        "Z": pre_activation["Z"],
-        "A": activation["A"],
-        "predictions": predictions["predictions"],
-        "Y_one_hot": y_one_hot,
-    }
+    forward_pass_results["predictions"] = predictions
+    forward_pass_results["Y_one_hot"] = y_one_hot
+
+    return forward_pass_results

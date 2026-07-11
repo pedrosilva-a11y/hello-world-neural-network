@@ -10,32 +10,26 @@ from training.error.categorial_cross_entropy import categorical_cross_entropy
 from training.forward.forward_pass import run_forward_pass
 from training.parameter.initialize import initialize_weights_and_bias
 
-SUPPORTED_MODEL_NAME = "single_layer_softmax_classifier"
+SUPPORTED_MODEL_NAMES = {
+    "single_layer_softmax_classifier",
+    "one_hidden_layer_relu_classifier",
+}
 SUPPORTED_OPTIMIZER = "batch_gradient_descent"
 
 
 class InitialTrainingOutput(TypedDict):
     """Output values from one full training pass."""
 
-    W1: np.ndarray
-    b1: np.ndarray
-    Z: np.ndarray
-    A: np.ndarray
-    predictions: np.ndarray
-    Y_one_hot: np.ndarray
-    loss: float
-    dZ: np.ndarray
-    dW: np.ndarray
-    db: np.ndarray
-    updated_W1: np.ndarray
-    updated_b1: np.ndarray
+    initial_parameters: dict[str, np.ndarray]
+    forward_output: dict[str, np.ndarray]
+    backward_output: dict[str, Any]
+    updated_parameters: dict[str, np.ndarray]
 
 
 class TrainingIterationsOutput(TypedDict):
     """Output values from multiple training iterations."""
 
-    final_W1: np.ndarray
-    final_b1: np.ndarray
+    final_parameters: dict[str, np.ndarray]
     train_predictions: np.ndarray
     validation_predictions: np.ndarray
     train_loss: list[float]
@@ -61,11 +55,28 @@ def validate_training_configuration(
     model_name = str(model_config["name"])
     optimizer = str(training_config["optimizer"])
 
-    if model_name != SUPPORTED_MODEL_NAME:
+    if model_name not in SUPPORTED_MODEL_NAMES:
         raise ValueError(f"Unsupported model name: {model_name}")
 
     if optimizer != SUPPORTED_OPTIMIZER:
         raise ValueError(f"Unsupported optimizer: {optimizer}")
+
+
+def _copy_parameters(
+    parameters: dict[str, np.ndarray],
+) -> dict[str, np.ndarray]:
+    """Create a copy of a parameter dictionary.
+
+    Args:
+        parameters: Dictionary containing weights and biases for each layer.
+
+    Returns:
+        Dictionary containing copied parameter arrays.
+    """
+    return {
+        parameter_name: parameter_value.copy()
+        for parameter_name, parameter_value in parameters.items()
+    }
 
 
 def run_initial_training_step(
@@ -74,7 +85,7 @@ def run_initial_training_step(
     model_config: dict[str, Any],
     training_config: dict[str, Any],
 ) -> InitialTrainingOutput:
-    """Run one full training pass.
+    """Run one full training step.
 
     Args:
         x_train: Training feature matrix.
@@ -98,36 +109,28 @@ def run_initial_training_step(
         x_train=x_train,
         neurons_profile=neurons_profile,
     )
+    initial_parameters = _copy_parameters(parameters)
 
     forward_output = run_forward_pass(
         x_train=x_train,
         y_train=y_train,
-        W1=parameters["W1"],
-        b1=parameters["b1"],
+        parameters=parameters,
+        neurons_profile=neurons_profile,
     )
 
     backward_output = run_backward_pass(
         x_train=x_train,
-        y_one_hot=forward_output["Y_one_hot"],
-        activation=forward_output["A"],
-        W1=parameters["W1"],
-        b1=parameters["b1"],
+        forward_pass_results=forward_output,
+        parameters=parameters,
+        neurons_profile=neurons_profile,
         learning_rate=learning_rate,
     )
 
     return {
-        "W1": parameters["W1"],
-        "b1": parameters["b1"],
-        "Z": forward_output["Z"],
-        "A": forward_output["A"],
-        "predictions": forward_output["predictions"],
-        "Y_one_hot": forward_output["Y_one_hot"],
-        "loss": backward_output["loss"],
-        "dZ": backward_output["dZ"],
-        "dW": backward_output["dW"],
-        "db": backward_output["db"],
-        "updated_W1": backward_output["updated_W1"],
-        "updated_b1": backward_output["updated_b1"],
+        "initial_parameters": initial_parameters,
+        "forward_output": forward_output,
+        "backward_output": backward_output,
+        "updated_parameters": backward_output["parameters"],
     }
 
 
@@ -141,10 +144,10 @@ def run_training_iterations(
 ) -> TrainingIterationsOutput:
     """Run multiple training iterations.
 
-    The model parameters are initialized once. Each iteration evaluates the
-    current training predictions, optionally evaluates validation predictions
-    and validation loss, runs one backward pass using only the training split,
-    and carries the updated parameters into the next iteration.
+    The model parameters are initialized once. Each iteration runs a forward
+    pass, evaluates predictions, optionally evaluates validation performance,
+    computes gradients using the training split, updates parameters, and carries
+    the updated parameters into the next iteration.
 
     Args:
         x_train: Training feature matrix.
@@ -183,9 +186,6 @@ def run_training_iterations(
         neurons_profile=neurons_profile,
     )
 
-    current_W1 = parameters["W1"]
-    current_b1 = parameters["b1"]
-
     train_loss_history: list[float] = []
     train_accuracy_history: list[float] = []
     validation_loss_history: list[float] = []
@@ -194,12 +194,14 @@ def run_training_iterations(
     train_predictions = np.array([])
     validation_predictions = np.array([])
 
+    output_layer = len(neurons_profile)
+
     for _iteration in range(num_iterations):
         train_forward_output = run_forward_pass(
             x_train=x_train,
             y_train=y_train,
-            W1=current_W1,
-            b1=current_b1,
+            parameters=parameters,
+            neurons_profile=neurons_profile,
         )
 
         train_evaluation_output = run_evaluation(
@@ -211,8 +213,8 @@ def run_training_iterations(
             validation_forward_output = run_forward_pass(
                 x_train=x_validation,
                 y_train=y_validation,
-                W1=current_W1,
-                b1=current_b1,
+                parameters=parameters,
+                neurons_profile=neurons_profile,
             )
 
             validation_evaluation_output = run_evaluation(
@@ -220,12 +222,12 @@ def run_training_iterations(
                 ypred=validation_forward_output["predictions"],
             )
 
-            validation_loss_output = categorical_cross_entropy(
+            validation_loss = categorical_cross_entropy(
                 y_one_hot=validation_forward_output["Y_one_hot"],
-                y_pred=validation_forward_output["A"],
+                y_pred=validation_forward_output[f"A{output_layer}"],
             )
 
-            validation_loss_history.append(validation_loss_output["loss"])
+            validation_loss_history.append(validation_loss)
             validation_accuracy_history.append(
                 validation_evaluation_output["accuracy"],
             )
@@ -233,23 +235,20 @@ def run_training_iterations(
 
         backward_output = run_backward_pass(
             x_train=x_train,
-            y_one_hot=train_forward_output["Y_one_hot"],
-            activation=train_forward_output["A"],
-            W1=current_W1,
-            b1=current_b1,
+            forward_pass_results=train_forward_output,
+            parameters=parameters,
+            neurons_profile=neurons_profile,
             learning_rate=learning_rate,
         )
+
+        parameters = backward_output["parameters"]
 
         train_loss_history.append(backward_output["loss"])
         train_accuracy_history.append(train_evaluation_output["accuracy"])
         train_predictions = train_forward_output["predictions"]
 
-        current_W1 = backward_output["updated_W1"]
-        current_b1 = backward_output["updated_b1"]
-
     return {
-        "final_W1": current_W1,
-        "final_b1": current_b1,
+        "final_parameters": parameters,
         "train_predictions": train_predictions,
         "validation_predictions": validation_predictions,
         "train_loss": train_loss_history,

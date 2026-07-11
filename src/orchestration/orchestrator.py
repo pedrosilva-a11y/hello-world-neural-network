@@ -37,6 +37,23 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def get_parameter_shapes(
+    parameters: dict[str, np.ndarray],
+) -> dict[str, list[int]]:
+    """Get JSON-serializable parameter shapes.
+
+    Args:
+        parameters: Dictionary containing trained model parameters.
+
+    Returns:
+        Dictionary mapping each parameter name to its shape.
+    """
+    return {
+        parameter_name: list(parameter_value.shape)
+        for parameter_name, parameter_value in parameters.items()
+    }
+
+
 def get_config_section(
     config: dict[str, Any],
     section_name: str,
@@ -153,6 +170,13 @@ def main() -> None:
         "config": config,
         "metadata": {
             "config_path": str(args.config),
+            "model": {
+                "name": model_config["name"],
+                "neurons_profile": model_config["neurons_profile"],
+                "final_parameter_shapes": get_parameter_shapes(
+                    parameters=training_output["final_parameters"],
+                ),
+            },
             "data_shapes": {
                 "full_train": list(x_full_train_matrix.shape),
                 "train": list(x_train_matrix.shape),

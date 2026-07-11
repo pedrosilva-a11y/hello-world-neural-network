@@ -1,0 +1,30 @@
+experiment_name: relu_16_normalized_lr_01_05k
+
+data_loading:
+  training_path: data/train.csv
+  testing_path: data/test.csv
+  label_column: label
+
+preprocessing:
+  normalize_pixels: true
+  pixel_scale_value: 255.0
+
+data_splitting:
+  enabled: true
+  strategy: stratified
+  validation_size: 0.2
+  random_seed: 42
+
+model:
+  name: one_hidden_layer_relu_classifier
+  input_size: 784
+  neurons_profile: [16, 10]
+
+training:
+  optimizer: batch_gradient_descent
+  num_iterations: 500
+  learning_rate: 0.1
+
+outputs:
+  prediction_preview_size: 20
+  save_summary: true

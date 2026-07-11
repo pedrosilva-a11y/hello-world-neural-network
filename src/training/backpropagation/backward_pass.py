@@ -1,70 +1,76 @@
 """Backward pass orchestration for the Digit Recognizer model."""
 
-from typing import TypedDict
+from typing import Any
 
 import numpy as np
 
-from training.backpropagation.batch_gradient_descent import batch_gradient_descent
-from training.backpropagation.gradients import gradient_computations_softmax
+from training.backpropagation.gradient.gradients_cross_entropy import (
+    gradient_computations_relu,
+    gradient_computations_softmax,
+)
+from training.backpropagation.optimizer.batch_gradient_descent import batch_gradient_descent
 from training.error.categorial_cross_entropy import categorical_cross_entropy
-
-
-class BackwardPassOutput(TypedDict):
-    """Output values from the backward pass."""
-
-    loss: float
-    dZ: np.ndarray
-    dW: np.ndarray
-    db: np.ndarray
-    updated_W1: np.ndarray
-    updated_b1: np.ndarray
 
 
 def run_backward_pass(
     x_train: np.ndarray,
-    y_one_hot: np.ndarray,
-    activation: np.ndarray,
-    W1: np.ndarray,
-    b1: np.ndarray,
+    forward_pass_results: dict[str, np.ndarray],
+    parameters: dict[str, np.ndarray],
+    neurons_profile: list[int],
     learning_rate: float = 1e-5,
-) -> BackwardPassOutput:
+) -> dict[str, Any]:
     """Run loss, gradient, and parameter-update computations.
 
     Args:
         x_train: Training feature matrix.
-        y_one_hot: One-hot representation of the true labels.
-        activation: Softmax probability matrix.
-        W1: Current weight matrix.
-        b1: Current bias vector.
+        forward_pass_results: Dictionary containing Z, and A for all layers.
+            Also predictions and the one-hot sparse representation of the true labels.
+        parameters: Dictionary containing the weights and bias parameters for each layer.
         learning_rate: Step size used to update the parameters.
+        neurons_profile: Quantity of neurons per layer, in order.
 
     Returns:
         Dictionary containing loss, gradients, and updated parameters.
     """
+    y_one_hot = forward_pass_results["Y_one_hot"]
+
+    layers = len(neurons_profile)
+
     loss = categorical_cross_entropy(
         y_one_hot=y_one_hot,
-        y_pred=activation,
+        y_pred=forward_pass_results[f"A{layers}"],
     )
 
-    gradients = gradient_computations_softmax(
-        x=x_train,
-        yhot=y_one_hot,
-        activation=activation,
-    )
+    gradients: dict[str, np.ndarray] = {}
 
-    updated_parameters = batch_gradient_descent(
-        W1=W1,
-        b1=b1,
-        dW1=gradients["dW"],
-        db1=gradients["db"],
-        learning_rate=learning_rate,
-    )
+    for i in range(layers - 1, -1, -1):
+
+        if i != (layers - 1):
+            gradients = gradient_computations_relu(
+                x=x_train,
+                gradients=gradients,
+                parameters=parameters,
+                forward_pass_results=forward_pass_results,
+                layer=i + 1,
+            )
+        else:
+            gradients = gradient_computations_softmax(
+                x=x_train,
+                yhot=y_one_hot,
+                forward_pass_results=forward_pass_results,
+                layer=i + 1,
+            )
+
+    for i in range(layers):
+        batch_gradient_descent(
+            gradients=gradients,
+            parameters=parameters,
+            layer=i + 1,
+            learning_rate=learning_rate,
+        )
 
     return {
-        "loss": loss["loss"],
-        "dZ": gradients["dZ"],
-        "dW": gradients["dW"],
-        "db": gradients["db"],
-        "updated_W1": updated_parameters["W1"],
-        "updated_b1": updated_parameters["b1"],
+        "loss": loss,
+        "gradients": gradients,
+        "parameters": parameters,
     }

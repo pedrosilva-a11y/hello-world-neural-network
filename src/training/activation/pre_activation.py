@@ -4,20 +4,23 @@ import numpy as np
 
 
 def compute_pre_activation(
-    x: np.ndarray,
+    a: np.ndarray,
     w: np.ndarray,
     b: np.ndarray,
+    layer_number: int,
 ) -> dict[str, np.ndarray]:
     """Compute the linear pre-activation values for a neural network layer.
 
     Args:
-        x: Input feature matrix.
-        w: Weight matrix.
-        b: Bias vector.
+        a: Activation of the previous layer. For the first layer,
+            the input features represent the previous activation values.
+        w: Weight matrix of the current layer.
+        b: Bias vector of the current layer.
+        layer_number: Layer that pre-activation is being computed this iteration.
 
     Returns:
         Dictionary containing the pre-activation matrix.
     """
     return {
-        "Z": x @ w + b,
+        f"Z{layer_number}": a @ w + b,
     }

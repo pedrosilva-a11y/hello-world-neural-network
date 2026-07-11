@@ -11,8 +11,10 @@ from training.backpropagation import backward_pass
 class TestRunBackwardPass(unittest.TestCase):
     """Tests for run_backward_pass."""
 
-    def test_run_backward_pass_coordinates_backward_computations(self) -> None:
-        """Run loss, gradient, and parameter-update computations."""
+    def test_run_backward_pass_coordinates_single_layer_backward_computations(
+        self,
+    ) -> None:
+        """Run loss, softmax gradients, and parameter updates for one layer."""
         x_train = np.array(
             [
                 [1.0, 2.0],
@@ -25,33 +27,41 @@ class TestRunBackwardPass(unittest.TestCase):
                 [0.0, 1.0],
             ],
         )
-        activation = np.array(
+        a1 = np.array(
             [
                 [0.8, 0.2],
                 [0.3, 0.7],
             ],
         )
-        W1 = np.array(
-            [
-                [1.0, 2.0],
-                [3.0, 4.0],
-            ],
-        )
-        b1 = np.array([[0.5, -0.5]])
+        forward_pass_results = {
+            "Y_one_hot": y_one_hot,
+            "A1": a1,
+        }
+        parameters = {
+            "W1": np.array(
+                [
+                    [1.0, 2.0],
+                    [3.0, 4.0],
+                ],
+            ),
+            "b1": np.array([[0.5, -0.5]]),
+        }
 
-        dZ = np.array(
-            [
-                [-0.2, 0.2],
-                [0.3, -0.3],
-            ],
-        )
-        dW = np.array(
-            [
-                [0.35, -0.35],
-                [0.4, -0.4],
-            ],
-        )
-        db = np.array([[0.05, -0.05]])
+        gradients = {
+            "dZ1": np.array(
+                [
+                    [-0.2, 0.2],
+                    [0.3, -0.3],
+                ],
+            ),
+            "dW1": np.array(
+                [
+                    [0.35, -0.35],
+                    [0.4, -0.4],
+                ],
+            ),
+            "db1": np.array([[0.05, -0.05]]),
+        }
         updated_W1 = np.array(
             [
                 [0.965, 2.035],
@@ -60,58 +70,73 @@ class TestRunBackwardPass(unittest.TestCase):
         )
         updated_b1 = np.array([[0.495, -0.495]])
 
+        def update_parameters(
+            gradients: dict[str, np.ndarray],
+            parameters: dict[str, np.ndarray],
+            layer: int,
+            learning_rate: float,
+        ) -> dict[str, np.ndarray]:
+            parameters[f"W{layer}"] = updated_W1
+            parameters[f"b{layer}"] = updated_b1
+            return parameters
+
         with (
             patch.object(
                 backward_pass,
                 "categorical_cross_entropy",
-                return_value={"loss": 0.289909},
+                return_value=0.289909,
             ) as mock_categorical_cross_entropy,
             patch.object(
                 backward_pass,
                 "gradient_computations_softmax",
-                return_value={"dZ": dZ, "dW": dW, "db": db},
+                return_value=gradients,
             ) as mock_gradient_computations_softmax,
             patch.object(
                 backward_pass,
+                "gradient_computations_relu",
+            ) as mock_gradient_computations_relu,
+            patch.object(
+                backward_pass,
                 "batch_gradient_descent",
-                return_value={"W1": updated_W1, "b1": updated_b1},
+                side_effect=update_parameters,
             ) as mock_batch_gradient_descent,
         ):
             result = backward_pass.run_backward_pass(
                 x_train=x_train,
-                y_one_hot=y_one_hot,
-                activation=activation,
-                W1=W1,
-                b1=b1,
+                forward_pass_results=forward_pass_results,
+                parameters=parameters,
+                neurons_profile=[2],
                 learning_rate=0.1,
             )
 
         self.assertEqual(result["loss"], 0.289909)
-        self.assertIs(result["dZ"], dZ)
-        self.assertIs(result["dW"], dW)
-        self.assertIs(result["db"], db)
-        self.assertIs(result["updated_W1"], updated_W1)
-        self.assertIs(result["updated_b1"], updated_b1)
+        self.assertIs(result["gradients"], gradients)
+        self.assertIs(result["parameters"], parameters)
+        self.assertIs(result["parameters"]["W1"], updated_W1)
+        self.assertIs(result["parameters"]["b1"], updated_b1)
 
         mock_categorical_cross_entropy.assert_called_once_with(
             y_one_hot=y_one_hot,
-            y_pred=activation,
+            y_pred=a1,
         )
         mock_gradient_computations_softmax.assert_called_once_with(
             x=x_train,
             yhot=y_one_hot,
-            activation=activation,
+            forward_pass_results=forward_pass_results,
+            layer=1,
         )
+        mock_gradient_computations_relu.assert_not_called()
         mock_batch_gradient_descent.assert_called_once_with(
-            W1=W1,
-            b1=b1,
-            dW1=dW,
-            db1=db,
+            gradients=gradients,
+            parameters=parameters,
+            layer=1,
             learning_rate=0.1,
         )
 
-    def test_run_backward_pass_returns_expected_shapes(self) -> None:
-        """Return gradients and updated parameters with expected shapes."""
+    def test_run_backward_pass_coordinates_hidden_layer_backward_computations(
+        self,
+    ) -> None:
+        """Compute gradients backward before updating parameters."""
         x_train = np.array(
             [
                 [1.0, 2.0],
@@ -124,37 +149,151 @@ class TestRunBackwardPass(unittest.TestCase):
                 [0.0, 1.0],
             ],
         )
-        activation = np.array(
-            [
-                [0.8, 0.2],
-                [0.3, 0.7],
-            ],
+        forward_pass_results = {
+            "Y_one_hot": y_one_hot,
+            "Z1": np.array(
+                [
+                    [1.0, -1.0, 0.0],
+                    [-2.0, 3.0, 4.0],
+                ],
+            ),
+            "A1": np.array(
+                [
+                    [1.0, 0.0, 0.0],
+                    [0.0, 3.0, 4.0],
+                ],
+            ),
+            "A2": np.array(
+                [
+                    [0.8, 0.2],
+                    [0.3, 0.7],
+                ],
+            ),
+        }
+        parameters = {
+            "W1": np.zeros((2, 3)),
+            "b1": np.zeros((1, 3)),
+            "W2": np.zeros((3, 2)),
+            "b2": np.zeros((1, 2)),
+        }
+
+        softmax_gradients = {
+            "dZ2": np.array(
+                [
+                    [-0.2, 0.2],
+                    [0.3, -0.3],
+                ],
+            ),
+            "dW2": np.zeros((3, 2)),
+            "db2": np.zeros((1, 2)),
+        }
+        full_gradients = {
+            **softmax_gradients,
+            "dA1": np.zeros((2, 3)),
+            "dZ1": np.zeros((2, 3)),
+            "dW1": np.zeros((2, 3)),
+            "db1": np.zeros((1, 3)),
+        }
+
+        with (
+            patch.object(
+                backward_pass,
+                "categorical_cross_entropy",
+                return_value=0.5,
+            ),
+            patch.object(
+                backward_pass,
+                "gradient_computations_softmax",
+                return_value=softmax_gradients,
+            ) as mock_gradient_computations_softmax,
+            patch.object(
+                backward_pass,
+                "gradient_computations_relu",
+                return_value=full_gradients,
+            ) as mock_gradient_computations_relu,
+            patch.object(
+                backward_pass,
+                "batch_gradient_descent",
+                return_value=parameters,
+            ) as mock_batch_gradient_descent,
+        ):
+            result = backward_pass.run_backward_pass(
+                x_train=x_train,
+                forward_pass_results=forward_pass_results,
+                parameters=parameters,
+                neurons_profile=[3, 2],
+                learning_rate=0.1,
+            )
+
+        self.assertIs(result["gradients"], full_gradients)
+
+        mock_gradient_computations_softmax.assert_called_once_with(
+            x=x_train,
+            yhot=y_one_hot,
+            forward_pass_results=forward_pass_results,
+            layer=2,
         )
-        W1 = np.array(
+        mock_gradient_computations_relu.assert_called_once_with(
+            x=x_train,
+            gradients=softmax_gradients,
+            parameters=parameters,
+            forward_pass_results=forward_pass_results,
+            layer=1,
+        )
+
+        self.assertEqual(mock_batch_gradient_descent.call_count, 2)
+        self.assertEqual(mock_batch_gradient_descent.call_args_list[0].kwargs["layer"], 1)
+        self.assertEqual(mock_batch_gradient_descent.call_args_list[1].kwargs["layer"], 2)
+
+    def test_run_backward_pass_returns_expected_shapes_for_single_layer(self) -> None:
+        """Return loss, gradients, and updated parameters for a softmax model."""
+        x_train = np.array(
             [
                 [1.0, 2.0],
                 [3.0, 4.0],
             ],
         )
-        b1 = np.array([[0.5, -0.5]])
+        y_one_hot = np.array(
+            [
+                [1.0, 0.0],
+                [0.0, 1.0],
+            ],
+        )
+        forward_pass_results = {
+            "Y_one_hot": y_one_hot,
+            "A1": np.array(
+                [
+                    [0.8, 0.2],
+                    [0.3, 0.7],
+                ],
+            ),
+        }
+        parameters = {
+            "W1": np.array(
+                [
+                    [1.0, 2.0],
+                    [3.0, 4.0],
+                ],
+            ),
+            "b1": np.array([[0.5, -0.5]]),
+        }
 
         result = backward_pass.run_backward_pass(
             x_train=x_train,
-            y_one_hot=y_one_hot,
-            activation=activation,
-            W1=W1,
-            b1=b1,
+            forward_pass_results=forward_pass_results,
+            parameters=parameters,
+            neurons_profile=[2],
             learning_rate=0.1,
         )
 
         self.assertIsInstance(result["loss"], float)
-        self.assertEqual(result["dZ"].shape, (2, 2))
-        self.assertEqual(result["dW"].shape, (2, 2))
-        self.assertEqual(result["db"].shape, (1, 2))
-        self.assertEqual(result["updated_W1"].shape, (2, 2))
-        self.assertEqual(result["updated_b1"].shape, (1, 2))
+        self.assertEqual(result["gradients"]["dZ1"].shape, (2, 2))
+        self.assertEqual(result["gradients"]["dW1"].shape, (2, 2))
+        self.assertEqual(result["gradients"]["db1"].shape, (1, 2))
+        self.assertEqual(result["parameters"]["W1"].shape, (2, 2))
+        self.assertEqual(result["parameters"]["b1"].shape, (1, 2))
 
-    def test_run_backward_pass_updates_parameters_correctly(self) -> None:
+    def test_run_backward_pass_updates_single_layer_parameters_correctly(self) -> None:
         """Return updated W1 and b1 after one gradient descent step."""
         x_train = np.array(
             [
@@ -168,26 +307,30 @@ class TestRunBackwardPass(unittest.TestCase):
                 [0.0, 1.0],
             ],
         )
-        activation = np.array(
-            [
-                [0.8, 0.2],
-                [0.3, 0.7],
-            ],
-        )
-        W1 = np.array(
-            [
-                [1.0, 2.0],
-                [3.0, 4.0],
-            ],
-        )
-        b1 = np.array([[0.5, -0.5]])
+        forward_pass_results = {
+            "Y_one_hot": y_one_hot,
+            "A1": np.array(
+                [
+                    [0.8, 0.2],
+                    [0.3, 0.7],
+                ],
+            ),
+        }
+        parameters = {
+            "W1": np.array(
+                [
+                    [1.0, 2.0],
+                    [3.0, 4.0],
+                ],
+            ),
+            "b1": np.array([[0.5, -0.5]]),
+        }
 
         result = backward_pass.run_backward_pass(
             x_train=x_train,
-            y_one_hot=y_one_hot,
-            activation=activation,
-            W1=W1,
-            b1=b1,
+            forward_pass_results=forward_pass_results,
+            parameters=parameters,
+            neurons_profile=[2],
             learning_rate=0.1,
         )
 
@@ -199,8 +342,8 @@ class TestRunBackwardPass(unittest.TestCase):
         )
         expected_updated_b1 = np.array([[0.495, -0.495]])
 
-        np.testing.assert_allclose(result["updated_W1"], expected_updated_W1)
-        np.testing.assert_allclose(result["updated_b1"], expected_updated_b1)
+        np.testing.assert_allclose(result["parameters"]["W1"], expected_updated_W1)
+        np.testing.assert_allclose(result["parameters"]["b1"], expected_updated_b1)
 
 
 if __name__ == "__main__":

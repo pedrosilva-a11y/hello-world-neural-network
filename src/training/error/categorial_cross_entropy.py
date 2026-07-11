@@ -7,7 +7,7 @@ EPSILON = 1e-15
 def categorical_cross_entropy(
     y_one_hot: np.ndarray,
     y_pred: np.ndarray,
-) -> dict[str, float]:
+) -> float:
     """Compute categorical cross-entropy loss.
 
     Args:
@@ -15,7 +15,7 @@ def categorical_cross_entropy(
         y_pred: Predicted probability distribution per input example.
 
     Returns:
-        Dictionary containing the average categorical cross-entropy loss.
+        Average categorical cross-entropy loss.
     """
     num_examples = y_one_hot.shape[0]
 
@@ -23,6 +23,4 @@ def categorical_cross_entropy(
     example_losses = np.sum(y_one_hot * np.log(clipped_y_pred), axis=1)
     loss = -float(np.sum(example_losses) / num_examples)
 
-    return {
-        "loss": loss,
-    }
+    return loss
