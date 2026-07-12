@@ -1,4 +1,4 @@
-experiment_name: softmax_normalized_lr_01_05k
+experiment_name: relu_128_128_128_normalized_regularized_l2_001_lr_01_5k
 data_loading:
   training_path: data/train.csv
   testing_path: data/test.csv
@@ -12,18 +12,21 @@ data_splitting:
   validation_size: 0.2
   random_seed: 42
 model:
-  name: single_layer_softmax_classifier
+  name: multi_layer_relu_classifier
   input_size: 784
   neurons_profile:
+  - 128
+  - 128
+  - 128
   - 10
 training:
   optimizer: batch_gradient_descent
-  num_iterations: 500
+  num_iterations: 5000
   learning_rate: 0.1
   regularization:
-    enabled: false
-    type: none
-    lambda: 0.0
+    enabled: true
+    type: l2
+    lambda: 0.01
 outputs:
   prediction_preview_size: 20
   save_summary: true

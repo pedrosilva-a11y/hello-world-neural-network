@@ -1,30 +1,31 @@
 experiment_name: relu_64_64_normalized_lr_01_5k
-
 data_loading:
   training_path: data/train.csv
   testing_path: data/test.csv
   label_column: label
-
 preprocessing:
   normalize_pixels: true
   pixel_scale_value: 255.0
-
 data_splitting:
   enabled: true
   strategy: stratified
   validation_size: 0.2
   random_seed: 42
-
 model:
   name: multi_layer_relu_classifier
   input_size: 784
-  neurons_profile: [64, 64, 10]
-
+  neurons_profile:
+  - 64
+  - 64
+  - 10
 training:
   optimizer: batch_gradient_descent
   num_iterations: 5000
   learning_rate: 0.1
-
+  regularization:
+    enabled: false
+    type: none
+    lambda: 0.0
 outputs:
   prediction_preview_size: 20
   save_summary: true

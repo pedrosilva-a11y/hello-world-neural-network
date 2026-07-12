@@ -8,6 +8,27 @@ import numpy as np
 from training import training
 
 
+def _training_config(
+    num_iterations: int = 1,
+    learning_rate: float = 0.1,
+    optimizer: str = "batch_gradient_descent",
+    regularization_enabled: bool = False,
+    regularization_type: str = "none",
+    lambda_coefficient: float = 0.0,
+) -> dict:
+    """Create a training config with regularization fields."""
+    return {
+        "optimizer": optimizer,
+        "num_iterations": num_iterations,
+        "learning_rate": learning_rate,
+        "regularization": {
+            "enabled": regularization_enabled,
+            "type": regularization_type,
+            "lambda": lambda_coefficient,
+        },
+    }
+
+
 class TestRunInitialTrainingStep(unittest.TestCase):
     """Tests for run_initial_training_step."""
 
@@ -18,11 +39,11 @@ class TestRunInitialTrainingStep(unittest.TestCase):
             "input_size": 2,
             "neurons_profile": [2],
         }
-        training_config = {
-            "optimizer": "batch_gradient_descent",
-            "learning_rate": 0.1,
-            "num_iterations": 1,
-        }
+        training_config = _training_config(
+            regularization_enabled=True,
+            regularization_type="l2",
+            lambda_coefficient=0.2,
+        )
 
         x_train = np.array(
             [
@@ -44,30 +65,26 @@ class TestRunInitialTrainingStep(unittest.TestCase):
             "b1": b1,
         }
 
-        Z1 = np.array(
-            [
-                [0.7, 1.0],
-                [1.5, 2.2],
-            ],
-        )
-        A1 = np.array(
-            [
-                [0.4, 0.6],
-                [0.7, 0.3],
-            ],
-        )
-        predictions = np.array([1, 0])
-        y_one_hot = np.array(
-            [
-                [0.0, 1.0],
-                [1.0, 0.0],
-            ],
-        )
         forward_output = {
-            "Z1": Z1,
-            "A1": A1,
-            "predictions": predictions,
-            "Y_one_hot": y_one_hot,
+            "Z1": np.array(
+                [
+                    [0.7, 1.0],
+                    [1.5, 2.2],
+                ],
+            ),
+            "A1": np.array(
+                [
+                    [0.4, 0.6],
+                    [0.7, 0.3],
+                ],
+            ),
+            "predictions": np.array([1, 0]),
+            "Y_one_hot": np.array(
+                [
+                    [0.0, 1.0],
+                    [1.0, 0.0],
+                ],
+            ),
         }
 
         gradients = {
@@ -145,6 +162,7 @@ class TestRunInitialTrainingStep(unittest.TestCase):
             forward_pass_results=forward_output,
             parameters=parameters,
             neurons_profile=[2],
+            lambda_coefficient=0.2,
             learning_rate=0.1,
         )
 
@@ -159,11 +177,12 @@ class TestRunTrainingIterations(unittest.TestCase):
             "input_size": 2,
             "neurons_profile": [2],
         }
-        training_config = {
-            "optimizer": "batch_gradient_descent",
-            "num_iterations": 2,
-            "learning_rate": 0.1,
-        }
+        training_config = _training_config(
+            num_iterations=2,
+            regularization_enabled=True,
+            regularization_type="l2",
+            lambda_coefficient=0.25,
+        )
 
         x_train = np.array(
             [
@@ -317,6 +336,12 @@ class TestRunTrainingIterations(unittest.TestCase):
         )
         self.assertEqual(second_forward_call["neurons_profile"], [2])
 
+        first_backward_call = mock_run_backward_pass.call_args_list[0].kwargs
+        second_backward_call = mock_run_backward_pass.call_args_list[1].kwargs
+
+        self.assertEqual(first_backward_call["lambda_coefficient"], 0.25)
+        self.assertEqual(second_backward_call["lambda_coefficient"], 0.25)
+
     def test_run_training_iterations_tracks_validation_metrics(self) -> None:
         """Run validation loss and accuracy during each training iteration."""
         model_config = {
@@ -324,11 +349,7 @@ class TestRunTrainingIterations(unittest.TestCase):
             "input_size": 2,
             "neurons_profile": [2],
         }
-        training_config = {
-            "optimizer": "batch_gradient_descent",
-            "num_iterations": 2,
-            "learning_rate": 0.1,
-        }
+        training_config = _training_config(num_iterations=2)
 
         x_train = np.array(
             [
@@ -496,7 +517,7 @@ class TestRunTrainingIterations(unittest.TestCase):
                         "parameters": updated_parameters_iteration_2,
                     },
                 ],
-            ),
+            ) as mock_run_backward_pass,
         ):
             result = training.run_training_iterations(
                 x_train=x_train,
@@ -525,6 +546,7 @@ class TestRunTrainingIterations(unittest.TestCase):
         self.assertEqual(mock_run_forward_pass.call_count, 4)
         self.assertEqual(mock_run_evaluation.call_count, 4)
         self.assertEqual(mock_categorical_cross_entropy.call_count, 2)
+        self.assertEqual(mock_run_backward_pass.call_count, 2)
 
         first_train_forward_call = mock_run_forward_pass.call_args_list[0].kwargs
         first_validation_forward_call = mock_run_forward_pass.call_args_list[1].kwargs
@@ -577,6 +599,12 @@ class TestRunTrainingIterations(unittest.TestCase):
             validation_activation_iteration_2,
         )
 
+        first_backward_call = mock_run_backward_pass.call_args_list[0].kwargs
+        second_backward_call = mock_run_backward_pass.call_args_list[1].kwargs
+
+        self.assertEqual(first_backward_call["lambda_coefficient"], 0.0)
+        self.assertEqual(second_backward_call["lambda_coefficient"], 0.0)
+
     def test_run_training_iterations_raises_error_for_invalid_iterations(self) -> None:
         """Raise ValueError when num_iterations is less than one."""
         model_config = {
@@ -584,11 +612,7 @@ class TestRunTrainingIterations(unittest.TestCase):
             "input_size": 2,
             "neurons_profile": [2],
         }
-        training_config = {
-            "optimizer": "batch_gradient_descent",
-            "num_iterations": 0,
-            "learning_rate": 0.1,
-        }
+        training_config = _training_config(num_iterations=0)
 
         x_train = np.array(
             [
@@ -615,11 +639,7 @@ class TestRunTrainingIterations(unittest.TestCase):
             "input_size": 2,
             "neurons_profile": [2],
         }
-        training_config = {
-            "optimizer": "batch_gradient_descent",
-            "num_iterations": 2,
-            "learning_rate": 0.1,
-        }
+        training_config = _training_config(num_iterations=2)
 
         x_train = np.array(
             [
@@ -656,11 +676,7 @@ class TestRunTrainingIterations(unittest.TestCase):
             "input_size": 2,
             "neurons_profile": [2],
         }
-        training_config = {
-            "optimizer": "batch_gradient_descent",
-            "num_iterations": 2,
-            "learning_rate": 0.1,
-        }
+        training_config = _training_config(num_iterations=2)
 
         x_train = np.array(
             [
@@ -688,11 +704,7 @@ class TestRunTrainingIterations(unittest.TestCase):
             "input_size": 2,
             "neurons_profile": [3, 2],
         }
-        training_config = {
-            "optimizer": "batch_gradient_descent",
-            "num_iterations": 1,
-            "learning_rate": 0.1,
-        }
+        training_config = _training_config()
 
         x_train = np.array(
             [
@@ -777,6 +789,7 @@ class TestRunTrainingIterations(unittest.TestCase):
             forward_pass_results=mock_run_forward_pass.return_value,
             parameters=parameters,
             neurons_profile=[3, 2],
+            lambda_coefficient=0.0,
             learning_rate=0.1,
         )
 
@@ -787,11 +800,7 @@ class TestRunTrainingIterations(unittest.TestCase):
             "input_size": 2,
             "neurons_profile": [3, 3, 2],
         }
-        training_config = {
-            "optimizer": "batch_gradient_descent",
-            "num_iterations": 1,
-            "learning_rate": 0.1,
-        }
+        training_config = _training_config()
 
         x_train = np.array(
             [
@@ -880,6 +889,7 @@ class TestRunTrainingIterations(unittest.TestCase):
             forward_pass_results=mock_run_forward_pass.return_value,
             parameters=parameters,
             neurons_profile=[3, 3, 2],
+            lambda_coefficient=0.0,
             learning_rate=0.1,
         )
 
@@ -892,11 +902,10 @@ class TestRunTrainingIterations(unittest.TestCase):
             "input_size": 2,
             "neurons_profile": [2],
         }
-        training_config = {
-            "optimizer": "adam",
-            "num_iterations": 2,
-            "learning_rate": 0.1,
-        }
+        training_config = _training_config(
+            optimizer="adam",
+            num_iterations=2,
+        )
 
         x_train = np.array(
             [

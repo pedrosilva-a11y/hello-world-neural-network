@@ -119,11 +119,19 @@ def run_initial_training_step(
         neurons_profile=neurons_profile,
     )
 
+    if not bool(training_config["regularization"]["enabled"]):
+        lambda_coefficient = 0.0
+    else:
+        lambda_coefficient = float(
+            training_config["regularization"]["lambda"],
+        )
+
     backward_output = run_backward_pass(
         x_train=x_train,
         forward_pass_results=forward_output,
         parameters=parameters,
         neurons_profile=neurons_profile,
+        lambda_coefficient=lambda_coefficient,
         learning_rate=learning_rate,
     )
 
@@ -197,6 +205,13 @@ def run_training_iterations(
 
     output_layer = len(neurons_profile)
 
+    if not bool(training_config["regularization"]["enabled"]):
+        lambda_coefficient = 0.0
+    else:
+        lambda_coefficient = float(
+            training_config["regularization"]["lambda"],
+        )
+
     for _iteration in range(num_iterations):
         train_forward_output = run_forward_pass(
             x_train=x_train,
@@ -239,6 +254,7 @@ def run_training_iterations(
             forward_pass_results=train_forward_output,
             parameters=parameters,
             neurons_profile=neurons_profile,
+            lambda_coefficient=lambda_coefficient,
             learning_rate=learning_rate,
         )
 

@@ -14,7 +14,7 @@ class TestRunBackwardPass(unittest.TestCase):
     def test_run_backward_pass_coordinates_single_layer_backward_computations(
         self,
     ) -> None:
-        """Run loss, softmax gradients, and parameter updates for one layer."""
+        """Run loss, softmax gradients, weight decay, and parameter updates."""
         x_train = np.array(
             [
                 [1.0, 2.0],
@@ -88,6 +88,11 @@ class TestRunBackwardPass(unittest.TestCase):
             ) as mock_categorical_cross_entropy,
             patch.object(
                 backward_pass,
+                "weight_decay_loss_term",
+                return_value=0.2,
+            ) as mock_weight_decay_loss_term,
+            patch.object(
+                backward_pass,
                 "gradient_computations_softmax",
                 return_value=gradients,
             ) as mock_gradient_computations_softmax,
@@ -95,6 +100,11 @@ class TestRunBackwardPass(unittest.TestCase):
                 backward_pass,
                 "gradient_computations_relu",
             ) as mock_gradient_computations_relu,
+            patch.object(
+                backward_pass,
+                "apply_weight_decay_to_gradients",
+                return_value=gradients,
+            ) as mock_apply_weight_decay_to_gradients,
             patch.object(
                 backward_pass,
                 "batch_gradient_descent",
@@ -106,10 +116,11 @@ class TestRunBackwardPass(unittest.TestCase):
                 forward_pass_results=forward_pass_results,
                 parameters=parameters,
                 neurons_profile=[2],
+                lambda_coefficient=0.3,
                 learning_rate=0.1,
             )
 
-        self.assertEqual(result["loss"], 0.289909)
+        self.assertAlmostEqual(result["loss"], 0.489909)
         self.assertIs(result["gradients"], gradients)
         self.assertIs(result["parameters"], parameters)
         self.assertIs(result["parameters"]["W1"], updated_W1)
@@ -119,6 +130,12 @@ class TestRunBackwardPass(unittest.TestCase):
             y_one_hot=y_one_hot,
             y_pred=a1,
         )
+
+        weight_decay_loss_kwargs = mock_weight_decay_loss_term.call_args.kwargs
+        self.assertIs(weight_decay_loss_kwargs["x_train"], x_train)
+        self.assertEqual(weight_decay_loss_kwargs["lambda_coefficient"], 0.3)
+        self.assertIs(weight_decay_loss_kwargs["parameters"], parameters)
+
         mock_gradient_computations_softmax.assert_called_once_with(
             x=x_train,
             yhot=y_one_hot,
@@ -126,6 +143,16 @@ class TestRunBackwardPass(unittest.TestCase):
             layer=1,
         )
         mock_gradient_computations_relu.assert_not_called()
+
+        weight_decay_gradient_kwargs = (
+            mock_apply_weight_decay_to_gradients.call_args.kwargs
+        )
+        self.assertIs(weight_decay_gradient_kwargs["x_train"], x_train)
+        self.assertEqual(weight_decay_gradient_kwargs["lambda_coefficient"], 0.3)
+        self.assertIs(weight_decay_gradient_kwargs["gradients"], gradients)
+        self.assertIs(weight_decay_gradient_kwargs["parameters"], parameters)
+        self.assertEqual(weight_decay_gradient_kwargs["layers"], 1)
+
         mock_batch_gradient_descent.assert_called_once_with(
             gradients=gradients,
             parameters=parameters,
@@ -136,7 +163,7 @@ class TestRunBackwardPass(unittest.TestCase):
     def test_run_backward_pass_coordinates_hidden_layer_backward_computations(
         self,
     ) -> None:
-        """Compute gradients backward before updating parameters."""
+        """Compute gradients backward before applying weight decay and updates."""
         x_train = np.array(
             [
                 [1.0, 2.0],
@@ -203,6 +230,11 @@ class TestRunBackwardPass(unittest.TestCase):
             ),
             patch.object(
                 backward_pass,
+                "weight_decay_loss_term",
+                return_value=0.1,
+            ) as mock_weight_decay_loss_term,
+            patch.object(
+                backward_pass,
                 "gradient_computations_softmax",
                 return_value=softmax_gradients,
             ) as mock_gradient_computations_softmax,
@@ -211,6 +243,11 @@ class TestRunBackwardPass(unittest.TestCase):
                 "gradient_computations_relu",
                 return_value=full_gradients,
             ) as mock_gradient_computations_relu,
+            patch.object(
+                backward_pass,
+                "apply_weight_decay_to_gradients",
+                return_value=full_gradients,
+            ) as mock_apply_weight_decay_to_gradients,
             patch.object(
                 backward_pass,
                 "batch_gradient_descent",
@@ -222,10 +259,18 @@ class TestRunBackwardPass(unittest.TestCase):
                 forward_pass_results=forward_pass_results,
                 parameters=parameters,
                 neurons_profile=[3, 2],
+                lambda_coefficient=0.4,
                 learning_rate=0.1,
             )
 
+        self.assertAlmostEqual(result["loss"], 0.6)
         self.assertIs(result["gradients"], full_gradients)
+
+        mock_weight_decay_loss_term.assert_called_once()
+        self.assertEqual(
+            mock_weight_decay_loss_term.call_args.kwargs["lambda_coefficient"],
+            0.4,
+        )
 
         mock_gradient_computations_softmax.assert_called_once_with(
             x=x_train,
@@ -239,6 +284,18 @@ class TestRunBackwardPass(unittest.TestCase):
             parameters=parameters,
             forward_pass_results=forward_pass_results,
             layer=1,
+        )
+
+        mock_apply_weight_decay_to_gradients.assert_called_once()
+        self.assertEqual(
+            mock_apply_weight_decay_to_gradients.call_args.kwargs["layers"],
+            2,
+        )
+        self.assertEqual(
+            mock_apply_weight_decay_to_gradients.call_args.kwargs[
+                "lambda_coefficient"
+            ],
+            0.4,
         )
 
         self.assertEqual(mock_batch_gradient_descent.call_count, 2)
@@ -283,6 +340,7 @@ class TestRunBackwardPass(unittest.TestCase):
             forward_pass_results=forward_pass_results,
             parameters=parameters,
             neurons_profile=[2],
+            lambda_coefficient=0.0,
             learning_rate=0.1,
         )
 
@@ -331,6 +389,7 @@ class TestRunBackwardPass(unittest.TestCase):
             forward_pass_results=forward_pass_results,
             parameters=parameters,
             neurons_profile=[2],
+            lambda_coefficient=0.0,
             learning_rate=0.1,
         )
 
@@ -344,6 +403,80 @@ class TestRunBackwardPass(unittest.TestCase):
 
         np.testing.assert_allclose(result["parameters"]["W1"], expected_updated_W1)
         np.testing.assert_allclose(result["parameters"]["b1"], expected_updated_b1)
+
+    def test_run_backward_pass_applies_l2_loss_and_weight_gradients(self) -> None:
+        """Add L2 loss and L2 weight-gradient terms when lambda is positive."""
+        x_train = np.array(
+            [
+                [1.0, 2.0],
+                [3.0, 4.0],
+            ],
+        )
+        y_one_hot = np.array(
+            [
+                [1.0, 0.0],
+                [0.0, 1.0],
+            ],
+        )
+        forward_pass_results = {
+            "Y_one_hot": y_one_hot,
+            "A1": np.array(
+                [
+                    [0.8, 0.2],
+                    [0.3, 0.7],
+                ],
+            ),
+        }
+        parameters = {
+            "W1": np.array(
+                [
+                    [1.0, 2.0],
+                    [3.0, 4.0],
+                ],
+            ),
+            "b1": np.array([[0.5, -0.5]]),
+        }
+
+        result = backward_pass.run_backward_pass(
+            x_train=x_train,
+            forward_pass_results=forward_pass_results,
+            parameters=parameters,
+            neurons_profile=[2],
+            lambda_coefficient=0.2,
+            learning_rate=0.1,
+        )
+
+        expected_regularized_dW1 = np.array(
+            [
+                [0.45, -0.15],
+                [0.7, 0.0],
+            ],
+        )
+        expected_updated_W1 = np.array(
+            [
+                [0.955, 2.015],
+                [2.93, 4.0],
+            ],
+        )
+        expected_updated_b1 = np.array([[0.495, -0.495]])
+
+        np.testing.assert_allclose(
+            result["gradients"]["dW1"],
+            expected_regularized_dW1,
+            atol=1e-12,
+        )
+        np.testing.assert_allclose(
+            result["parameters"]["W1"],
+            expected_updated_W1,
+            atol=1e-12,
+        )
+        np.testing.assert_allclose(
+            result["parameters"]["b1"],
+            expected_updated_b1,
+            atol=1e-12,
+        )
+
+        self.assertAlmostEqual(result["loss"], 1.7899092476264712)
 
 
 if __name__ == "__main__":

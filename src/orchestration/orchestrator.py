@@ -186,6 +186,11 @@ def main() -> None:
                     parameters=training_output["final_parameters"],
                 ),
             },
+            "regularization": {
+                "enabled": training_config["regularization"]["enabled"],
+                "type": training_config["regularization"]["type"],
+                "lambda": training_config["regularization"]["lambda"],
+            },
             "data_shapes": {
                 "full_train": list(x_full_train_matrix.shape),
                 "train": list(x_train_matrix.shape),
@@ -227,7 +232,7 @@ def main() -> None:
     print("Experiment name:")
     print(experiment_name)
 
-    print("Final training categorical cross-entropy loss:")
+    print("Final training objective loss:")
     print(training_output["train_loss"][-1])
 
     print("Final training accuracy:")
