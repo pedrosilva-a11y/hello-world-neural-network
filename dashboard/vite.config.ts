@@ -1,9 +1,19 @@
+/// <reference types="vitest" />
+
 import react from "@vitejs/plugin-react";
 import fs from "node:fs";
 import path from "node:path";
-import { defineConfig, type Plugin } from "vite";
+import { fileURLToPath } from "node:url";
+import { defineConfig } from "vitest/config";
+import type { Plugin } from "vite";
 
-const resultsDirectory = path.resolve(__dirname, "../results");
+const currentFilePath = fileURLToPath(import.meta.url);
+const currentDirectory = path.dirname(currentFilePath);
+const resultsDirectory = path.resolve(currentDirectory, "../results");
+
+const logicCoverageThreshold = Number(
+  process.env.npm_package_config_logic_coverage_threshold ?? 80,
+);
 
 type ExperimentIndexItem = {
   experimentName: string;
@@ -106,4 +116,25 @@ function experimentsApiPlugin(): Plugin {
 
 export default defineConfig({
   plugins: [react(), experimentsApiPlugin()],
+
+  build: {
+    chunkSizeWarningLimit: 5000,
+  },
+
+  test: {
+    environment: "jsdom",
+    setupFiles: "./src/test/setup.ts",
+    coverage: {
+      provider: "v8",
+      include: ["src/lib/**/*.ts"],
+      exclude: ["src/**/*.test.ts", "src/test/**"],
+      reporter: ["text", "html"],
+      thresholds: {
+        statements: logicCoverageThreshold,
+        branches: logicCoverageThreshold,
+        functions: logicCoverageThreshold,
+        lines: logicCoverageThreshold,
+      },
+    },
+  },
 });

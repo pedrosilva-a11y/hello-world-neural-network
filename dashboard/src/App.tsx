@@ -1,7 +1,5 @@
-import { useMemo, useState } from "react";
+import { lazy, Suspense, useMemo, useState } from "react";
 
-import { ComparisonCharts } from "./components/comparisons/ComparisonCharts";
-import { TrainingCurves } from "./components/curves/TrainingCurves";
 import { ConfigDiff } from "./components/diff/ConfigDiff";
 import { ExperimentDetail } from "./components/detail/ExperimentDetail";
 import { FilterSidebar } from "./components/filters/FilterSidebar";
@@ -13,6 +11,18 @@ import {
   type DashboardFilters,
 } from "./lib/filterExperiments";
 import { useExperiments } from "./hooks/useExperiments";
+
+const ComparisonCharts = lazy(() =>
+  import("./components/comparisons/ComparisonCharts").then((module) => ({
+    default: module.ComparisonCharts,
+  })),
+);
+
+const TrainingCurves = lazy(() =>
+  import("./components/curves/TrainingCurves").then((module) => ({
+    default: module.TrainingCurves,
+  })),
+);
 
 function App() {
   const { data, errorMessage, isLoading, refresh } = useExperiments();
@@ -98,14 +108,20 @@ function App() {
 
           <div className="dashboard-main">
             <MetricCards experiments={filteredExperiments} />
-            <ComparisonCharts experiments={filteredExperiments} />
-            <TrainingCurves experiments={filteredExperiments} />
+
+            <Suspense fallback={<p className="muted">Loading charts...</p>}>
+              <ComparisonCharts experiments={filteredExperiments} />
+              <TrainingCurves experiments={filteredExperiments} />
+            </Suspense>
+
             <RankingTable experiments={filteredExperiments} />
+
             <ExperimentDetail
               experiments={filteredExperiments}
               selectedExperiment={selectedExperiment}
               onSelectedExperimentNameChange={setSelectedExperimentName}
             />
+
             <ConfigDiff experiments={filteredExperiments} />
           </div>
         </div>

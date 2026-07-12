@@ -1,6 +1,4 @@
 import { useMemo, useState } from "react";
-import Plot from "react-plotly.js";
-import type { Config, Data, Layout } from "plotly.js";
 
 import {
   getTrainingCurveExperiments,
@@ -9,6 +7,12 @@ import {
   type CurveLineKind,
   type CurveMetric,
 } from "../../lib/trainingCurveData";
+import {
+  PlotlyChart,
+  type PlotlyChartConfig,
+  type PlotlyChartData,
+  type PlotlyChartLayout,
+} from "../plotly/PlotlyChart";
 import type { NormalizedExperiment } from "../../types/summary";
 
 type TrainingCurvesProps = {
@@ -26,7 +30,7 @@ type CurveChartProps = {
   useLogXAxis: boolean;
 };
 
-const chartConfig: Partial<Config> = {
+const chartConfig: PlotlyChartConfig = {
   displayModeBar: false,
   responsive: true,
 };
@@ -89,7 +93,7 @@ function buildCurveTraces(
   maxPoints: number,
   maxIteration: number,
   includedKinds: CurveLineKind[],
-): Data[] {
+): PlotlyChartData {
   const seriesList = getTrainingCurveSeries(
     experiments,
     metric,
@@ -115,7 +119,7 @@ function buildCurveTraces(
 function buildValidationLossMinimumTraces(
   experiments: NormalizedExperiment[],
   maxIteration: number,
-): Data[] {
+): PlotlyChartData {
   return getTrainingCurveExperiments(experiments).flatMap((experiment) => {
     const point = getValidationLossMinimumPoint(experiment, maxIteration);
 
@@ -160,7 +164,7 @@ function CurveChart({
     ? buildValidationLossMinimumTraces(experiments, maxIteration)
     : [];
 
-  const data = [...traces, ...markerTraces];
+  const data: PlotlyChartData = [...traces, ...markerTraces];
 
   if (data.length === 0) {
     return (
@@ -171,7 +175,7 @@ function CurveChart({
     );
   }
 
-  const layout: Partial<Layout> = {
+  const layout: PlotlyChartLayout = {
     autosize: true,
     height: 460,
     margin: {
@@ -208,12 +212,11 @@ function CurveChart({
       </div>
 
       <div className="chart-plot chart-plot-tall">
-        <Plot
+        <PlotlyChart
           config={chartConfig}
           data={data}
+          height={460}
           layout={layout}
-          style={{ height: "460px", width: "100%" }}
-          useResizeHandler
         />
       </div>
     </article>

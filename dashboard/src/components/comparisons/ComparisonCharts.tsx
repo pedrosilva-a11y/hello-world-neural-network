@@ -1,11 +1,14 @@
-import Plot from "react-plotly.js";
-import type { Config, Data, Layout } from "plotly.js";
-
 import {
   comparisonMetricDefinitions,
   getComparisonChartPoints,
   type ComparisonMetric,
 } from "../../lib/comparisonChartData";
+import {
+  PlotlyChart,
+  type PlotlyChartConfig,
+  type PlotlyChartData,
+  type PlotlyChartLayout,
+} from "../plotly/PlotlyChart";
 import type { NormalizedExperiment } from "../../types/summary";
 
 type ComparisonChartsProps = {
@@ -17,7 +20,7 @@ type ComparisonChartProps = {
   metric: ComparisonMetric;
 };
 
-const chartConfig: Partial<Config> = {
+const chartConfig: PlotlyChartConfig = {
   displayModeBar: false,
   responsive: true,
 };
@@ -48,7 +51,7 @@ function ComparisonChart({ experiments, metric }: ComparisonChartProps) {
     );
   }
 
-  const chartData: Data[] = [
+  const chartData: PlotlyChartData = [
     {
       type: "bar",
       orientation: "h",
@@ -63,7 +66,7 @@ function ComparisonChart({ experiments, metric }: ComparisonChartProps) {
     },
   ];
 
-  const layout: Partial<Layout> = {
+  const layout: PlotlyChartLayout = {
     autosize: true,
     height: chartHeight,
     margin: {
@@ -94,12 +97,11 @@ function ComparisonChart({ experiments, metric }: ComparisonChartProps) {
       </div>
 
       <div className="chart-plot" style={{ height: `${chartHeight}px` }}>
-        <Plot
+        <PlotlyChart
           config={chartConfig}
           data={chartData}
+          height={chartHeight}
           layout={layout}
-          style={{ height: `${chartHeight}px`, width: "100%" }}
-          useResizeHandler
         />
       </div>
     </article>

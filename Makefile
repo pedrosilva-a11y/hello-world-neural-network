@@ -1,4 +1,4 @@
-.PHONY: lint type-check test coverage check format visualize orchestrate inference dashboard-install dashboard dashboard-build dashboard-check dashboard-dev plot-experiment plot-label-distribution
+.PHONY: lint type-check test coverage check format visualize orchestrate inference dashboard-install dashboard dashboard-build dashboard-check dashboard-coverage dashboard-dev plot-experiment plot-label-distribution
 
 ARGS ?=
 CONFIG ?= conf/experiments/softmax_baseline.yaml
@@ -45,15 +45,18 @@ inference:
 	PYTHONPATH=$(PYTHONPATH) uv run python -m orchestration.inference_orchestrator --experiment-name $(EXPERIMENT_NAME) --submission-file-name $(SUBMISSION_FILE_NAME)
 
 dashboard-install:
-	cd dashboard && npm install
+	cd dashboard && pnpm install
 
 dashboard:
-	cd dashboard && npm run dev
+	cd dashboard && pnpm run dev
 
 dashboard-build:
-	cd dashboard && npm run build
+	cd dashboard && pnpm run build
 
 dashboard-check:
-	cd dashboard && npm run check
+	cd dashboard && pnpm run check
 
-dashboard-dev: check dashboard-check dashboard
+dashboard-coverage:
+	cd dashboard && pnpm run test:coverage
+
+dashboard-dev: dashboard-check dashboard
