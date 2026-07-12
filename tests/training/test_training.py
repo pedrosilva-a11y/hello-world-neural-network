@@ -303,10 +303,14 @@ class TestRunTrainingIterations(unittest.TestCase):
         self.assertEqual(mock_run_backward_pass.call_count, 2)
 
         first_forward_call = mock_run_forward_pass.call_args_list[0].kwargs
+        self.assertIs(first_forward_call["x_train"], x_train)
+        self.assertIs(first_forward_call["y_train"], y_train)
         self.assertIs(first_forward_call["parameters"], initial_parameters)
         self.assertEqual(first_forward_call["neurons_profile"], [2])
 
         second_forward_call = mock_run_forward_pass.call_args_list[1].kwargs
+        self.assertIs(second_forward_call["x_train"], x_train)
+        self.assertIs(second_forward_call["y_train"], y_train)
         self.assertIs(
             second_forward_call["parameters"],
             updated_parameters_iteration_1,
@@ -423,7 +427,7 @@ class TestRunTrainingIterations(unittest.TestCase):
                 training,
                 "initialize_weights_and_bias",
                 return_value=initial_parameters,
-            ),
+            ) as mock_initialize_weights_and_bias,
             patch.object(
                 training,
                 "run_forward_pass",
@@ -514,6 +518,10 @@ class TestRunTrainingIterations(unittest.TestCase):
         self.assertEqual(result["validation_loss"], [1.4, 0.9])
         self.assertEqual(result["validation_accuracy"], [0.25, 0.75])
 
+        mock_initialize_weights_and_bias.assert_called_once_with(
+            x_train=x_train,
+            neurons_profile=[2],
+        )
         self.assertEqual(mock_run_forward_pass.call_count, 4)
         self.assertEqual(mock_run_evaluation.call_count, 4)
         self.assertEqual(mock_categorical_cross_entropy.call_count, 2)
@@ -523,13 +531,23 @@ class TestRunTrainingIterations(unittest.TestCase):
         second_train_forward_call = mock_run_forward_pass.call_args_list[2].kwargs
         second_validation_forward_call = mock_run_forward_pass.call_args_list[3].kwargs
 
+        self.assertIs(first_train_forward_call["x_train"], x_train)
+        self.assertIs(first_train_forward_call["y_train"], y_train)
         self.assertIs(first_train_forward_call["parameters"], initial_parameters)
+
+        self.assertIs(first_validation_forward_call["x_train"], x_validation)
+        self.assertIs(first_validation_forward_call["y_train"], y_validation)
         self.assertIs(first_validation_forward_call["parameters"], initial_parameters)
 
+        self.assertIs(second_train_forward_call["x_train"], x_train)
+        self.assertIs(second_train_forward_call["y_train"], y_train)
         self.assertIs(
             second_train_forward_call["parameters"],
             updated_parameters_iteration_1,
         )
+
+        self.assertIs(second_validation_forward_call["x_train"], x_validation)
+        self.assertIs(second_validation_forward_call["y_train"], y_validation)
         self.assertIs(
             second_validation_forward_call["parameters"],
             updated_parameters_iteration_1,
@@ -695,7 +713,7 @@ class TestRunTrainingIterations(unittest.TestCase):
                 training,
                 "initialize_weights_and_bias",
                 return_value=parameters,
-            ),
+            ) as mock_initialize_weights_and_bias,
             patch.object(
                 training,
                 "run_forward_pass",
@@ -717,7 +735,7 @@ class TestRunTrainingIterations(unittest.TestCase):
                         ],
                     ),
                 },
-            ),
+            ) as mock_run_forward_pass,
             patch.object(
                 training,
                 "run_evaluation",
@@ -731,7 +749,7 @@ class TestRunTrainingIterations(unittest.TestCase):
                     "gradients": {},
                     "parameters": parameters,
                 },
-            ),
+            ) as mock_run_backward_pass,
         ):
             result = training.run_training_iterations(
                 x_train=x_train,
@@ -743,6 +761,24 @@ class TestRunTrainingIterations(unittest.TestCase):
         self.assertIs(result["final_parameters"], parameters)
         self.assertEqual(result["train_loss"], [0.5])
         self.assertEqual(result["train_accuracy"], [1.0])
+
+        mock_initialize_weights_and_bias.assert_called_once_with(
+            x_train=x_train,
+            neurons_profile=[3, 2],
+        )
+        mock_run_forward_pass.assert_called_once_with(
+            x_train=x_train,
+            y_train=y_train,
+            parameters=parameters,
+            neurons_profile=[3, 2],
+        )
+        mock_run_backward_pass.assert_called_once_with(
+            x_train=x_train,
+            forward_pass_results=mock_run_forward_pass.return_value,
+            parameters=parameters,
+            neurons_profile=[3, 2],
+            learning_rate=0.1,
+        )
 
     def test_run_training_iterations_accepts_multi_layer_relu_model(self) -> None:
         """Accept the multi-layer ReLU model configuration."""

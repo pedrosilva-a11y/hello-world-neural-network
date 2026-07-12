@@ -5,8 +5,9 @@ from pathlib import Path
 from pprint import pprint
 from statistics.get_pixel_value_distribution import get_pixel_value_distribution
 
-from data_loading.utils.read_csv import read_csv
 from preprocessing.get_combined_pixel_data import get_combined_pixel_data
+
+from data_loading.utils.read_csv import read_csv
 
 ROOT_DIR = Path(__file__).resolve().parents[2]
 

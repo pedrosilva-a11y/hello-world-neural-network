@@ -9,6 +9,7 @@ import numpy as np
 
 from data_loading.data_loading import load_digit_recognizer_data
 from data_splitting.data_splitting import split_digit_recognizer_training_data
+from inference.utils.parameters_io import save_parameters
 from preprocessing.preprocessing import preprocess_digit_recognizer_data
 from training.training import run_training_iterations
 from utils.json_io import save_json
@@ -161,6 +162,14 @@ def main() -> None:
         y_validation=y_validation_array,
         model_config=model_config,
         training_config=training_config,
+    )
+
+    experiment_results_dir = ROOT_DIR / "results" / experiment_name
+    parameters_path = experiment_results_dir / "parameters.npz"
+
+    save_parameters(
+        parameters=training_output["final_parameters"],
+        file_path=parameters_path,
     )
 
     prediction_preview_size = int(outputs_config["prediction_preview_size"])

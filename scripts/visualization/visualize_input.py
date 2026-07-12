@@ -4,10 +4,10 @@ from argparse import ArgumentParser
 from pathlib import Path
 from typing import cast
 
+from preprocessing.get_combined_pixel_data import get_combined_pixel_data
 from render_entry_by_index import render_entry_by_index
 
 from data_loading.utils.read_csv import read_csv
-from preprocessing.get_combined_pixel_data import get_combined_pixel_data
 
 ROOT_DIR = Path(__file__).resolve().parents[2]
 

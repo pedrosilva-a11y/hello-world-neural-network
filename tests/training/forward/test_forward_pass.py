@@ -15,13 +15,13 @@ class TestRunForwardPass(unittest.TestCase):
         self,
     ) -> None:
         """Run pre-activation, softmax, prediction, and one-hot encoding."""
-        x_train = np.array(
+        x = np.array(
             [
                 [1.0, 2.0],
                 [3.0, 4.0],
             ],
         )
-        y_train = np.array([1, 0])
+        y = np.array([1, 0])
         parameters = {
             "W1": np.array(
                 [
@@ -80,8 +80,8 @@ class TestRunForwardPass(unittest.TestCase):
             ) as mock_label_one_hot_representation,
         ):
             result = forward_pass.run_forward_pass(
-                x_train=x_train,
-                y_train=y_train,
+                x_train=x,
+                y_train=y,
                 parameters=parameters,
                 neurons_profile=neurons_profile,
             )
@@ -92,7 +92,7 @@ class TestRunForwardPass(unittest.TestCase):
         self.assertIs(result["Y_one_hot"], y_one_hot)
 
         mock_compute_pre_activation.assert_called_once_with(
-            a=x_train,
+            a=x,
             w=parameters["W1"],
             b=parameters["b1"],
             layer_number=1,
@@ -100,19 +100,19 @@ class TestRunForwardPass(unittest.TestCase):
         mock_relu.assert_not_called()
         mock_softmax.assert_called_once_with(logits=z1)
         mock_get_predictions.assert_called_once_with(activation=a1)
-        mock_label_one_hot_representation.assert_called_once_with(labels=y_train)
+        mock_label_one_hot_representation.assert_called_once_with(labels=y)
 
     def test_run_forward_pass_coordinates_one_hidden_relu_layer_forward_pass(
         self,
     ) -> None:
         """Run ReLU for hidden layer and softmax for output layer."""
-        x_train = np.array(
+        x = np.array(
             [
                 [1.0, 2.0],
                 [3.0, 4.0],
             ],
         )
-        y_train = np.array([1, 0])
+        y = np.array([1, 0])
         parameters = {
             "W1": np.array(
                 [
@@ -195,8 +195,8 @@ class TestRunForwardPass(unittest.TestCase):
             ) as mock_label_one_hot_representation,
         ):
             result = forward_pass.run_forward_pass(
-                x_train=x_train,
-                y_train=y_train,
+                x_train=x,
+                y_train=y,
                 parameters=parameters,
                 neurons_profile=neurons_profile,
             )
@@ -213,7 +213,7 @@ class TestRunForwardPass(unittest.TestCase):
         first_call = mock_compute_pre_activation.call_args_list[0].kwargs
         second_call = mock_compute_pre_activation.call_args_list[1].kwargs
 
-        self.assertIs(first_call["a"], x_train)
+        self.assertIs(first_call["a"], x)
         self.assertIs(first_call["w"], parameters["W1"])
         self.assertIs(first_call["b"], parameters["b1"])
         self.assertEqual(first_call["layer_number"], 1)
@@ -226,27 +226,95 @@ class TestRunForwardPass(unittest.TestCase):
         mock_relu.assert_called_once_with(pre_activation=z1)
         mock_softmax.assert_called_once_with(logits=z2)
         mock_get_predictions.assert_called_once_with(activation=a2)
-        mock_label_one_hot_representation.assert_called_once_with(labels=y_train)
+        mock_label_one_hot_representation.assert_called_once_with(labels=y)
+
+    def test_run_forward_pass_without_labels_skips_one_hot_encoding(self) -> None:
+        """Run inference-style forward pass without creating Y_one_hot."""
+        x = np.array(
+            [
+                [1.0, 2.0],
+                [3.0, 4.0],
+            ],
+        )
+        parameters = {
+            "W1": np.array(
+                [
+                    [0.1, 0.2],
+                    [0.3, 0.4],
+                ],
+            ),
+            "b1": np.array([[0.01, 0.02]]),
+        }
+        neurons_profile = [2]
+
+        z1 = np.array(
+            [
+                [0.7, 1.0],
+                [1.5, 2.2],
+            ],
+        )
+        a1 = np.array(
+            [
+                [0.4, 0.6],
+                [0.7, 0.3],
+            ],
+        )
+        predictions = np.array([1, 0])
+
+        with (
+            patch.object(
+                forward_pass,
+                "compute_pre_activation",
+                return_value={"Z1": z1},
+            ),
+            patch.object(
+                forward_pass,
+                "softmax",
+                return_value=a1,
+            ),
+            patch.object(
+                forward_pass,
+                "get_predictions",
+                return_value=predictions,
+            ) as mock_get_predictions,
+            patch.object(
+                forward_pass,
+                "label_one_hot_representation",
+            ) as mock_label_one_hot_representation,
+        ):
+            result = forward_pass.run_forward_pass(
+                x_train=x,
+                parameters=parameters,
+                neurons_profile=neurons_profile,
+            )
+
+        self.assertIs(result["Z1"], z1)
+        self.assertIs(result["A1"], a1)
+        self.assertIs(result["predictions"], predictions)
+        self.assertNotIn("Y_one_hot", result)
+
+        mock_get_predictions.assert_called_once_with(activation=a1)
+        mock_label_one_hot_representation.assert_not_called()
 
     def test_run_forward_pass_returns_expected_shapes_for_single_layer_softmax(
         self,
     ) -> None:
         """Return forward pass outputs with expected shapes for softmax model."""
-        x_train = np.array(
+        x = np.array(
             [
                 [1.0, 2.0, 3.0],
                 [4.0, 5.0, 6.0],
             ],
         )
-        y_train = np.array([1, 0])
+        y = np.array([1, 0])
         parameters = {
             "W1": np.zeros((3, 10)),
             "b1": np.zeros((1, 10)),
         }
 
         result = forward_pass.run_forward_pass(
-            x_train=x_train,
-            y_train=y_train,
+            x_train=x,
+            y_train=y,
             parameters=parameters,
             neurons_profile=[10],
         )
@@ -260,13 +328,13 @@ class TestRunForwardPass(unittest.TestCase):
         self,
     ) -> None:
         """Return forward pass outputs with expected shapes for hidden-layer model."""
-        x_train = np.array(
+        x = np.array(
             [
                 [1.0, 2.0, 3.0],
                 [4.0, 5.0, 6.0],
             ],
         )
-        y_train = np.array([1, 0])
+        y = np.array([1, 0])
         parameters = {
             "W1": np.zeros((3, 4)),
             "b1": np.zeros((1, 4)),
@@ -275,8 +343,8 @@ class TestRunForwardPass(unittest.TestCase):
         }
 
         result = forward_pass.run_forward_pass(
-            x_train=x_train,
-            y_train=y_train,
+            x_train=x,
+            y_train=y,
             parameters=parameters,
             neurons_profile=[4, 10],
         )
@@ -287,6 +355,34 @@ class TestRunForwardPass(unittest.TestCase):
         self.assertEqual(result["A2"].shape, (2, 10))
         self.assertEqual(result["predictions"].shape, (2,))
         self.assertEqual(result["Y_one_hot"].shape, (2, 10))
+
+    def test_run_forward_pass_returns_expected_shapes_without_labels(self) -> None:
+        """Return inference outputs without Y_one_hot when labels are omitted."""
+        x = np.array(
+            [
+                [1.0, 2.0, 3.0],
+                [4.0, 5.0, 6.0],
+            ],
+        )
+        parameters = {
+            "W1": np.zeros((3, 4)),
+            "b1": np.zeros((1, 4)),
+            "W2": np.zeros((4, 10)),
+            "b2": np.zeros((1, 10)),
+        }
+
+        result = forward_pass.run_forward_pass(
+            x_train=x,
+            parameters=parameters,
+            neurons_profile=[4, 10],
+        )
+
+        self.assertEqual(result["Z1"].shape, (2, 4))
+        self.assertEqual(result["A1"].shape, (2, 4))
+        self.assertEqual(result["Z2"].shape, (2, 10))
+        self.assertEqual(result["A2"].shape, (2, 10))
+        self.assertEqual(result["predictions"].shape, (2,))
+        self.assertNotIn("Y_one_hot", result)
 
 
 if __name__ == "__main__":

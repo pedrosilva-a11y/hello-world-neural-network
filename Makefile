@@ -1,10 +1,12 @@
-.PHONY: lint type-check test coverage check format visualize distribution orchestrate plot-experiment plot-label-distribution
+.PHONY: lint type-check test coverage check format visualize distribution orchestrate inference dashboard plot-experiment plot-label-distribution
 
 ARGS ?=
-INDEX ?= 200
 CONFIG ?= conf/experiments/softmax_baseline.yaml
+DASHBOARD_PORT ?= 8501
 EXPERIMENT_NAME ?= softmax_baseline
+INDEX ?= 200
 PYTHONPATH := src
+SUBMISSION_FILE_NAME ?= submission.csv
 
 lint:
 	PYTHONPATH=$(PYTHONPATH) uv run ruff check .
@@ -39,3 +41,18 @@ endif
 
 plot-label-distribution:
 	PYTHONPATH=$(PYTHONPATH) uv run python scripts/visualization/visualize_label_distribution.py --experiment-name $(EXPERIMENT_NAME)
+
+inference:
+	PYTHONPATH=$(PYTHONPATH) uv run python -m orchestration.inference_orchestrator --experiment-name $(EXPERIMENT_NAME) --submission-file-name $(SUBMISSION_FILE_NAME)
+
+dashboard-install:
+	cd dashboard && npm install
+
+dashboard:
+	cd dashboard && npm run dev
+
+dashboard-build:
+	cd dashboard && npm run build
+
+dashboard-check:
+	cd dashboard && npm run check
