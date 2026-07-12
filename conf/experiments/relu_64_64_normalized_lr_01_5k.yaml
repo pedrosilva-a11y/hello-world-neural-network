@@ -16,7 +16,7 @@ data_splitting:
   random_seed: 42
 
 model:
-  name: one_hidden_layer_relu_classifier
+  name: multi_layer_relu_classifier
   input_size: 784
   neurons_profile: [64, 64, 10]
 

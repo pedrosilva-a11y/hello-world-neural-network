@@ -1,8 +1,7 @@
-.PHONY: lint type-check test coverage check format visualize distribution orchestrate inference dashboard plot-experiment plot-label-distribution
+.PHONY: lint type-check test coverage check format visualize orchestrate inference dashboard-install dashboard dashboard-build dashboard-check dashboard-dev plot-experiment plot-label-distribution
 
 ARGS ?=
 CONFIG ?= conf/experiments/softmax_baseline.yaml
-DASHBOARD_PORT ?= 8501
 EXPERIMENT_NAME ?= softmax_baseline
 INDEX ?= 200
 PYTHONPATH := src
@@ -56,3 +55,5 @@ dashboard-build:
 
 dashboard-check:
 	cd dashboard && npm run check
+
+dashboard-dev: check dashboard-check dashboard
