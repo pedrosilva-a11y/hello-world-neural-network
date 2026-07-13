@@ -16,13 +16,15 @@ def _training_config(
     regularization_enabled: bool = False,
     regularization_type: str = "none",
     lambda_coefficient: float = 0.0,
+    momentum_enabled: bool = False,
+    momentum_beta: float = 0.0,
     batching_strategy: str = "full_batch",
     batch_size: int | None = None,
     shuffle: bool = False,
     random_seed: int = 42,
     num_epochs: int | None = None,
 ) -> dict:
-    """Create a training config with regularization and batching fields."""
+    """Create a training config with regularization, momentum, and batching fields."""
     config = {
         "optimizer": optimizer,
         "learning_rate": learning_rate,
@@ -31,6 +33,10 @@ def _training_config(
             "enabled": regularization_enabled,
             "type": regularization_type,
             "lambda": lambda_coefficient,
+        },
+        "momentum": {
+            "enabled": momentum_enabled,
+            "beta": momentum_beta,
         },
         "batching": {
             "strategy": batching_strategy,
@@ -134,7 +140,6 @@ class TestRunInitialTrainingStep(unittest.TestCase):
         backward_output = {
             "loss": 0.5,
             "gradients": gradients,
-            "parameters": updated_parameters,
         }
 
         with (
@@ -153,6 +158,11 @@ class TestRunInitialTrainingStep(unittest.TestCase):
                 "run_backward_pass",
                 return_value=backward_output,
             ) as mock_run_backward_pass,
+            patch.object(
+                training,
+                "update_parameters_with_gradient_descent",
+                return_value=updated_parameters,
+            ) as mock_update_parameters_with_gradient_descent,
         ):
             result = training.run_initial_training_step(
                 x_train=x_train,
@@ -166,6 +176,7 @@ class TestRunInitialTrainingStep(unittest.TestCase):
         self.assertIs(result["forward_output"], forward_output)
         self.assertIs(result["backward_output"], backward_output)
         self.assertIs(result["updated_parameters"], updated_parameters)
+        self.assertIs(result["backward_output"]["parameters"], updated_parameters)
 
         mock_initialize_weights_and_bias.assert_called_once_with(
             x_train=x_train,
@@ -184,8 +195,12 @@ class TestRunInitialTrainingStep(unittest.TestCase):
             parameters=parameters,
             neurons_profile=[2],
             lambda_coefficient=0.2,
-            learning_rate=0.1,
             regularization_sample_count=x_train.shape[0],
+        )
+        mock_update_parameters_with_gradient_descent.assert_called_once_with(
+            parameters=parameters,
+            gradients=gradients,
+            learning_rate=0.1,
         )
 
 
@@ -265,6 +280,17 @@ class TestRunTrainingIterations(unittest.TestCase):
         predictions_iteration_1 = np.array([1, 0])
         predictions_iteration_2 = np.array([1, 0])
 
+        gradients_iteration_1 = {
+            "dZ1": np.zeros((2, 2)),
+            "dW1": np.zeros((2, 2)),
+            "db1": np.zeros((1, 2)),
+        }
+        gradients_iteration_2 = {
+            "dZ1": np.zeros((2, 2)),
+            "dW1": np.zeros((2, 2)),
+            "db1": np.zeros((1, 2)),
+        }
+
         with (
             patch.object(
                 training,
@@ -303,24 +329,22 @@ class TestRunTrainingIterations(unittest.TestCase):
                 side_effect=[
                     {
                         "loss": 1.2,
-                        "gradients": {
-                            "dZ1": np.zeros((2, 2)),
-                            "dW1": np.zeros((2, 2)),
-                            "db1": np.zeros((1, 2)),
-                        },
-                        "parameters": updated_parameters_iteration_1,
+                        "gradients": gradients_iteration_1,
                     },
                     {
                         "loss": 0.8,
-                        "gradients": {
-                            "dZ1": np.zeros((2, 2)),
-                            "dW1": np.zeros((2, 2)),
-                            "db1": np.zeros((1, 2)),
-                        },
-                        "parameters": updated_parameters_iteration_2,
+                        "gradients": gradients_iteration_2,
                     },
                 ],
             ) as mock_run_backward_pass,
+            patch.object(
+                training,
+                "update_parameters_with_gradient_descent",
+                side_effect=[
+                    updated_parameters_iteration_1,
+                    updated_parameters_iteration_2,
+                ],
+            ) as mock_update_parameters_with_gradient_descent,
         ):
             result = training.run_training_iterations(
                 x_train=x_train,
@@ -364,6 +388,7 @@ class TestRunTrainingIterations(unittest.TestCase):
         self.assertEqual(mock_run_forward_pass.call_count, 2)
         self.assertEqual(mock_run_evaluation.call_count, 2)
         self.assertEqual(mock_run_backward_pass.call_count, 2)
+        self.assertEqual(mock_update_parameters_with_gradient_descent.call_count, 2)
 
         first_forward_call = mock_run_forward_pass.call_args_list[0].kwargs
         self.assertIs(first_forward_call["x_train"], x_train)
@@ -385,6 +410,24 @@ class TestRunTrainingIterations(unittest.TestCase):
 
         self.assertEqual(first_backward_call["lambda_coefficient"], 0.25)
         self.assertEqual(second_backward_call["lambda_coefficient"], 0.25)
+
+        first_update_call = mock_update_parameters_with_gradient_descent.call_args_list[
+            0
+        ].kwargs
+        second_update_call = mock_update_parameters_with_gradient_descent.call_args_list[
+            1
+        ].kwargs
+
+        self.assertIs(first_update_call["parameters"], initial_parameters)
+        self.assertIs(first_update_call["gradients"], gradients_iteration_1)
+        self.assertEqual(first_update_call["learning_rate"], 0.1)
+
+        self.assertIs(
+            second_update_call["parameters"],
+            updated_parameters_iteration_1,
+        )
+        self.assertIs(second_update_call["gradients"], gradients_iteration_2)
+        self.assertEqual(second_update_call["learning_rate"], 0.1)
 
         self.assertEqual(
             first_backward_call["regularization_sample_count"],
@@ -496,6 +539,17 @@ class TestRunTrainingIterations(unittest.TestCase):
         train_predictions_iteration_2 = np.array([1, 0])
         validation_predictions_iteration_2 = np.array([0, 1])
 
+        gradients_iteration_1 = {
+            "dZ1": np.zeros((2, 2)),
+            "dW1": np.zeros((2, 2)),
+            "db1": np.zeros((1, 2)),
+        }
+        gradients_iteration_2 = {
+            "dZ1": np.zeros((2, 2)),
+            "dW1": np.zeros((2, 2)),
+            "db1": np.zeros((1, 2)),
+        }
+
         with (
             patch.object(
                 training,
@@ -553,24 +607,22 @@ class TestRunTrainingIterations(unittest.TestCase):
                 side_effect=[
                     {
                         "loss": 1.2,
-                        "gradients": {
-                            "dZ1": np.zeros((2, 2)),
-                            "dW1": np.zeros((2, 2)),
-                            "db1": np.zeros((1, 2)),
-                        },
-                        "parameters": updated_parameters_iteration_1,
+                        "gradients": gradients_iteration_1,
                     },
                     {
                         "loss": 0.8,
-                        "gradients": {
-                            "dZ1": np.zeros((2, 2)),
-                            "dW1": np.zeros((2, 2)),
-                            "db1": np.zeros((1, 2)),
-                        },
-                        "parameters": updated_parameters_iteration_2,
+                        "gradients": gradients_iteration_2,
                     },
                 ],
             ) as mock_run_backward_pass,
+            patch.object(
+                training,
+                "update_parameters_with_gradient_descent",
+                side_effect=[
+                    updated_parameters_iteration_1,
+                    updated_parameters_iteration_2,
+                ],
+            ) as mock_update_parameters_with_gradient_descent,
         ):
             result = training.run_training_iterations(
                 x_train=x_train,
@@ -620,6 +672,7 @@ class TestRunTrainingIterations(unittest.TestCase):
         self.assertEqual(mock_run_evaluation.call_count, 4)
         self.assertEqual(mock_categorical_cross_entropy.call_count, 2)
         self.assertEqual(mock_run_backward_pass.call_count, 2)
+        self.assertEqual(mock_update_parameters_with_gradient_descent.call_count, 2)
 
         first_train_forward_call = mock_run_forward_pass.call_args_list[0].kwargs
         first_validation_forward_call = mock_run_forward_pass.call_args_list[1].kwargs
@@ -677,6 +730,24 @@ class TestRunTrainingIterations(unittest.TestCase):
 
         self.assertEqual(first_backward_call["lambda_coefficient"], 0.0)
         self.assertEqual(second_backward_call["lambda_coefficient"], 0.0)
+
+        first_update_call = mock_update_parameters_with_gradient_descent.call_args_list[
+            0
+        ].kwargs
+        second_update_call = mock_update_parameters_with_gradient_descent.call_args_list[
+            1
+        ].kwargs
+
+        self.assertIs(first_update_call["parameters"], initial_parameters)
+        self.assertIs(first_update_call["gradients"], gradients_iteration_1)
+        self.assertEqual(first_update_call["learning_rate"], 0.1)
+
+        self.assertIs(
+            second_update_call["parameters"],
+            updated_parameters_iteration_1,
+        )
+        self.assertIs(second_update_call["gradients"], gradients_iteration_2)
+        self.assertEqual(second_update_call["learning_rate"], 0.1)
 
         self.assertEqual(
             first_backward_call["regularization_sample_count"],
@@ -774,13 +845,19 @@ class TestRunTrainingIterations(unittest.TestCase):
                     {
                         "loss": 1.2,
                         "gradients": {},
-                        "parameters": updated_parameters_iteration_1,
                     },
                     {
                         "loss": 0.8,
                         "gradients": {},
-                        "parameters": updated_parameters_iteration_2,
                     },
+                ],
+            ),
+            patch.object(
+                training,
+                "update_parameters_with_gradient_descent",
+                side_effect=[
+                    updated_parameters_iteration_1,
+                    updated_parameters_iteration_2,
                 ],
             ),
         ):
@@ -959,25 +1036,31 @@ class TestRunTrainingIterations(unittest.TestCase):
                     {
                         "loss": 1.1,
                         "gradients": {},
-                        "parameters": updated_parameters_batch_1,
                     },
                     {
                         "loss": 1.0,
                         "gradients": {},
-                        "parameters": updated_parameters_batch_2,
                     },
                     {
                         "loss": 0.9,
                         "gradients": {},
-                        "parameters": updated_parameters_batch_3,
                     },
                     {
                         "loss": 0.8,
                         "gradients": {},
-                        "parameters": updated_parameters_batch_4,
                     },
                 ],
             ) as mock_run_backward_pass,
+            patch.object(
+                training,
+                "update_parameters_with_gradient_descent",
+                side_effect=[
+                    updated_parameters_batch_1,
+                    updated_parameters_batch_2,
+                    updated_parameters_batch_3,
+                    updated_parameters_batch_4,
+                ],
+            ) as mock_update_parameters_with_gradient_descent,
             patch.object(
                 training,
                 "run_evaluation",
@@ -1045,6 +1128,7 @@ class TestRunTrainingIterations(unittest.TestCase):
         )
         self.assertEqual(mock_run_forward_pass.call_count, 8)
         self.assertEqual(mock_run_backward_pass.call_count, 4)
+        self.assertEqual(mock_update_parameters_with_gradient_descent.call_count, 4)
         self.assertEqual(mock_run_evaluation.call_count, 4)
         self.assertEqual(mock_categorical_cross_entropy.call_count, 4)
         self.assertEqual(mock_weight_decay_loss_term.call_count, 2)
@@ -1193,15 +1277,21 @@ class TestRunTrainingIterations(unittest.TestCase):
                     {
                         "loss": 1.1,
                         "gradients": {},
-                        "parameters": updated_parameters_batch_1,
                     },
                     {
                         "loss": 1.0,
                         "gradients": {},
-                        "parameters": updated_parameters_batch_2,
                     },
                 ],
             ) as mock_run_backward_pass,
+            patch.object(
+                training,
+                "update_parameters_with_gradient_descent",
+                side_effect=[
+                    updated_parameters_batch_1,
+                    updated_parameters_batch_2,
+                ],
+            ),
             patch.object(
                 training,
                 "run_evaluation",
@@ -1499,9 +1589,13 @@ class TestRunTrainingIterations(unittest.TestCase):
                 return_value={
                     "loss": 0.5,
                     "gradients": {},
-                    "parameters": parameters,
                 },
             ) as mock_run_backward_pass,
+            patch.object(
+                training,
+                "update_parameters_with_gradient_descent",
+                return_value=parameters,
+            ),
         ):
             result = training.run_training_iterations(
                 x_train=x_train,
@@ -1535,7 +1629,6 @@ class TestRunTrainingIterations(unittest.TestCase):
             parameters=parameters,
             neurons_profile=[3, 2],
             lambda_coefficient=0.0,
-            learning_rate=0.1,
             regularization_sample_count=x_train.shape[0],
         )
 
@@ -1605,9 +1698,13 @@ class TestRunTrainingIterations(unittest.TestCase):
                 return_value={
                     "loss": 0.5,
                     "gradients": {},
-                    "parameters": parameters,
                 },
             ) as mock_run_backward_pass,
+            patch.object(
+                training,
+                "update_parameters_with_gradient_descent",
+                return_value=parameters,
+            ),
         ):
             result = training.run_training_iterations(
                 x_train=x_train,
@@ -1641,7 +1738,6 @@ class TestRunTrainingIterations(unittest.TestCase):
             parameters=parameters,
             neurons_profile=[3, 3, 2],
             lambda_coefficient=0.0,
-            learning_rate=0.1,
             regularization_sample_count=x_train.shape[0],
         )
 
@@ -1728,8 +1824,12 @@ class TestRunTrainingIterations(unittest.TestCase):
                 return_value={
                     "loss": 0.5,
                     "gradients": {},
-                    "parameters": parameters,
                 },
+            ),
+            patch.object(
+                training,
+                "update_parameters_with_gradient_descent",
+                return_value=parameters,
             ),
         ):
             training.run_training_iterations(
@@ -1755,6 +1855,511 @@ class TestRunTrainingIterations(unittest.TestCase):
         )
 
         self.assertIsNone(result)
+
+    def test_get_momentum_config_defaults_to_disabled_when_missing(self) -> None:
+        """Return disabled momentum config when momentum is not configured."""
+        training_config = _training_config()
+        training_config.pop("momentum")
+
+        result = training._get_momentum_config(
+            training_config=training_config,
+        )
+
+        self.assertEqual(
+            result,
+            {
+                "enabled": False,
+                "beta": 0.0,
+            },
+        )
+
+    def test_run_training_iterations_uses_gradient_descent_when_momentum_is_disabled(
+        self,
+    ) -> None:
+        """Use gradient descent parameter updates when momentum is disabled."""
+        model_config = {
+            "name": "single_layer_softmax_classifier",
+            "input_size": 2,
+            "neurons_profile": [2],
+        }
+        training_config = _training_config(
+            num_iterations=1,
+            momentum_enabled=False,
+            momentum_beta=0.0,
+        )
+
+        x_train = np.array(
+            [
+                [1.0, 2.0],
+                [3.0, 4.0],
+            ],
+        )
+        y_train = np.array([1, 0])
+
+        initial_parameters = {
+            "W1": np.array(
+                [
+                    [0.1, 0.2],
+                    [0.3, 0.4],
+                ],
+            ),
+            "b1": np.array([[0.0, 0.0]]),
+        }
+        updated_parameters = {
+            "W1": np.array(
+                [
+                    [0.11, 0.19],
+                    [0.31, 0.39],
+                ],
+            ),
+            "b1": np.array([[0.01, -0.01]]),
+        }
+
+        with (
+            patch.object(
+                training,
+                "initialize_weights_and_bias",
+                return_value=initial_parameters,
+            ),
+            patch.object(
+                training,
+                "initialize_velocity",
+            ) as mock_initialize_velocity,
+            patch.object(
+                training,
+                "update_parameters_with_momentum",
+            ) as mock_update_parameters_with_momentum,
+            patch.object(
+                training,
+                "run_forward_pass",
+                return_value={
+                    "Z1": np.zeros((2, 2)),
+                    "A1": np.array([[0.4, 0.6], [0.7, 0.3]]),
+                    "predictions": np.array([1, 0]),
+                    "Y_one_hot": np.array([[0.0, 1.0], [1.0, 0.0]]),
+                },
+            ),
+            patch.object(
+                training,
+                "run_evaluation",
+                return_value={"accuracy": 1.0},
+            ),
+            patch.object(
+                training,
+                "run_backward_pass",
+                return_value={
+                    "loss": 0.5,
+                    "gradients": {
+                        "dW1": np.zeros((2, 2)),
+                        "db1": np.zeros((1, 2)),
+                    },
+                },
+            ),
+            patch.object(
+                training,
+                "update_parameters_with_gradient_descent",
+                return_value=updated_parameters,
+            ) as mock_update_parameters_with_gradient_descent,
+        ):
+            result = training.run_training_iterations(
+                x_train=x_train,
+                y_train=y_train,
+                model_config=model_config,
+                training_config=training_config,
+            )
+
+        self.assertIs(result["final_parameters"], updated_parameters)
+        mock_initialize_velocity.assert_not_called()
+        mock_update_parameters_with_momentum.assert_not_called()
+        mock_update_parameters_with_gradient_descent.assert_called_once()
+
+    def test_run_training_iterations_uses_momentum_for_full_batch_updates(
+        self,
+    ) -> None:
+        """Use momentum update state across full-batch iterations."""
+        model_config = {
+            "name": "single_layer_softmax_classifier",
+            "input_size": 2,
+            "neurons_profile": [2],
+        }
+        training_config = _training_config(
+            num_iterations=2,
+            momentum_enabled=True,
+            momentum_beta=0.9,
+        )
+
+        x_train = np.array(
+            [
+                [1.0, 2.0],
+                [3.0, 4.0],
+            ],
+        )
+        y_train = np.array([1, 0])
+
+        initial_parameters = {
+            "W1": np.array([[0.1, 0.2], [0.3, 0.4]]),
+            "b1": np.array([[0.0, 0.0]]),
+        }
+        momentum_parameters_1 = {
+            "W1": np.array([[0.11, 0.19], [0.31, 0.39]]),
+            "b1": np.array([[0.01, -0.01]]),
+        }
+        momentum_parameters_2 = {
+            "W1": np.array([[0.12, 0.18], [0.32, 0.38]]),
+            "b1": np.array([[0.02, -0.02]]),
+        }
+
+        initial_velocity = {
+            "W1": np.zeros((2, 2)),
+            "b1": np.zeros((1, 2)),
+        }
+        velocity_after_iteration_1 = {
+            "W1": np.ones((2, 2)),
+            "b1": np.ones((1, 2)),
+        }
+        velocity_after_iteration_2 = {
+            "W1": np.full((2, 2), 2.0),
+            "b1": np.full((1, 2), 2.0),
+        }
+
+        gradients_iteration_1 = {
+            "dW1": np.full((2, 2), 0.1),
+            "db1": np.full((1, 2), 0.01),
+        }
+        gradients_iteration_2 = {
+            "dW1": np.full((2, 2), 0.2),
+            "db1": np.full((1, 2), 0.02),
+        }
+
+        with (
+            patch.object(
+                training,
+                "initialize_weights_and_bias",
+                return_value=initial_parameters,
+            ),
+            patch.object(
+                training,
+                "initialize_velocity",
+                return_value=initial_velocity,
+            ) as mock_initialize_velocity,
+            patch.object(
+                training,
+                "update_parameters_with_momentum",
+                side_effect=[
+                    (momentum_parameters_1, velocity_after_iteration_1),
+                    (momentum_parameters_2, velocity_after_iteration_2),
+                ],
+            ) as mock_update_parameters_with_momentum,
+            patch.object(
+                training,
+                "run_forward_pass",
+                side_effect=[
+                    {
+                        "Z1": np.zeros((2, 2)),
+                        "A1": np.array([[0.4, 0.6], [0.7, 0.3]]),
+                        "predictions": np.array([1, 0]),
+                        "Y_one_hot": np.array([[0.0, 1.0], [1.0, 0.0]]),
+                    },
+                    {
+                        "Z1": np.zeros((2, 2)),
+                        "A1": np.array([[0.3, 0.7], [0.8, 0.2]]),
+                        "predictions": np.array([1, 0]),
+                        "Y_one_hot": np.array([[0.0, 1.0], [1.0, 0.0]]),
+                    },
+                ],
+            ) as mock_run_forward_pass,
+            patch.object(
+                training,
+                "run_evaluation",
+                side_effect=[
+                    {"accuracy": 0.5},
+                    {"accuracy": 1.0},
+                ],
+            ),
+            patch.object(
+                training,
+                "run_backward_pass",
+                side_effect=[
+                    {
+                        "loss": 1.2,
+                        "gradients": gradients_iteration_1,
+                    },
+                    {
+                        "loss": 0.8,
+                        "gradients": gradients_iteration_2,
+                    },
+                ],
+            ),
+        ):
+            result = training.run_training_iterations(
+                x_train=x_train,
+                y_train=y_train,
+                model_config=model_config,
+                training_config=training_config,
+            )
+
+        self.assertIs(result["final_parameters"], momentum_parameters_2)
+
+        mock_initialize_velocity.assert_called_once_with(
+            parameters=initial_parameters,
+        )
+        self.assertEqual(mock_update_parameters_with_momentum.call_count, 2)
+
+        first_update_call = mock_update_parameters_with_momentum.call_args_list[0].kwargs
+        second_update_call = mock_update_parameters_with_momentum.call_args_list[1].kwargs
+
+        self.assertIs(first_update_call["parameters"], initial_parameters)
+        self.assertIs(first_update_call["gradients"], gradients_iteration_1)
+        self.assertIs(first_update_call["velocity"], initial_velocity)
+        self.assertEqual(first_update_call["learning_rate"], 0.1)
+        self.assertEqual(first_update_call["beta"], 0.9)
+
+        self.assertIs(second_update_call["parameters"], momentum_parameters_1)
+        self.assertIs(second_update_call["gradients"], gradients_iteration_2)
+        self.assertIs(second_update_call["velocity"], velocity_after_iteration_1)
+        self.assertEqual(second_update_call["learning_rate"], 0.1)
+        self.assertEqual(second_update_call["beta"], 0.9)
+
+        second_forward_call = mock_run_forward_pass.call_args_list[1].kwargs
+        self.assertIs(second_forward_call["parameters"], momentum_parameters_1)
+
+    def test_run_training_iterations_carries_velocity_across_mini_batches_with_momentum(
+        self,
+    ) -> None:
+        """Carry momentum velocity across mini-batch updates."""
+        model_config = {
+            "name": "single_layer_softmax_classifier",
+            "input_size": 2,
+            "neurons_profile": [2],
+        }
+        training_config = _training_config(
+            batching_strategy="mini_batch",
+            batch_size=2,
+            shuffle=False,
+            num_epochs=1,
+            momentum_enabled=True,
+            momentum_beta=0.9,
+        )
+
+        x_train = np.array(
+            [
+                [1.0, 0.0],
+                [0.0, 1.0],
+                [1.0, 1.0],
+                [0.5, 0.5],
+            ],
+        )
+        y_train = np.array([0, 1, 1, 0])
+
+        initial_parameters = {
+            "W1": np.array([[0.1, 0.2], [0.3, 0.4]]),
+            "b1": np.array([[0.0, 0.0]]),
+        }
+        momentum_parameters_1 = {
+            "W1": np.array([[0.11, 0.19], [0.31, 0.39]]),
+            "b1": np.array([[0.01, -0.01]]),
+        }
+        momentum_parameters_2 = {
+            "W1": np.array([[0.12, 0.18], [0.32, 0.38]]),
+            "b1": np.array([[0.02, -0.02]]),
+        }
+
+        initial_velocity = {
+            "W1": np.zeros((2, 2)),
+            "b1": np.zeros((1, 2)),
+        }
+        velocity_after_batch_1 = {
+            "W1": np.ones((2, 2)),
+            "b1": np.ones((1, 2)),
+        }
+        velocity_after_batch_2 = {
+            "W1": np.full((2, 2), 2.0),
+            "b1": np.full((1, 2), 2.0),
+        }
+
+        gradients_batch_1 = {
+            "dW1": np.full((2, 2), 0.1),
+            "db1": np.full((1, 2), 0.01),
+        }
+        gradients_batch_2 = {
+            "dW1": np.full((2, 2), 0.2),
+            "db1": np.full((1, 2), 0.02),
+        }
+
+        batch_forward_1 = {
+            "Z1": np.zeros((2, 2)),
+            "A1": np.array([[0.9, 0.1], [0.2, 0.8]]),
+            "predictions": np.array([0, 1]),
+            "Y_one_hot": np.array([[1.0, 0.0], [0.0, 1.0]]),
+        }
+        batch_forward_2 = {
+            "Z1": np.zeros((2, 2)),
+            "A1": np.array([[0.3, 0.7], [0.6, 0.4]]),
+            "predictions": np.array([1, 0]),
+            "Y_one_hot": np.array([[0.0, 1.0], [1.0, 0.0]]),
+        }
+        train_forward_epoch = {
+            "Z1": np.zeros((4, 2)),
+            "A1": np.array(
+                [
+                    [0.8, 0.2],
+                    [0.1, 0.9],
+                    [0.3, 0.7],
+                    [0.6, 0.4],
+                ],
+            ),
+            "predictions": np.array([0, 1, 1, 0]),
+            "Y_one_hot": np.zeros((4, 2)),
+        }
+
+        with (
+            patch.object(
+                training,
+                "initialize_weights_and_bias",
+                return_value=initial_parameters,
+            ),
+            patch.object(
+                training,
+                "initialize_velocity",
+                return_value=initial_velocity,
+            ) as mock_initialize_velocity,
+            patch.object(
+                training,
+                "update_parameters_with_momentum",
+                side_effect=[
+                    (momentum_parameters_1, velocity_after_batch_1),
+                    (momentum_parameters_2, velocity_after_batch_2),
+                ],
+            ) as mock_update_parameters_with_momentum,
+            patch.object(
+                training,
+                "run_forward_pass",
+                side_effect=[
+                    batch_forward_1,
+                    batch_forward_2,
+                    train_forward_epoch,
+                ],
+            ) as mock_run_forward_pass,
+            patch.object(
+                training,
+                "run_backward_pass",
+                side_effect=[
+                    {
+                        "loss": 1.1,
+                        "gradients": gradients_batch_1,
+                    },
+                    {
+                        "loss": 1.0,
+                        "gradients": gradients_batch_2,
+                    },
+                ],
+            ),
+            patch.object(
+                training,
+                "run_evaluation",
+                return_value={"accuracy": 1.0},
+            ),
+            patch.object(
+                training,
+                "categorical_cross_entropy",
+                return_value=0.4,
+            ),
+            patch.object(
+                training,
+                "weight_decay_loss_term",
+                return_value=0.0,
+            ),
+        ):
+            result = training.run_training_iterations(
+                x_train=x_train,
+                y_train=y_train,
+                model_config=model_config,
+                training_config=training_config,
+            )
+
+        self.assertIs(result["final_parameters"], momentum_parameters_2)
+
+        mock_initialize_velocity.assert_called_once_with(
+            parameters=initial_parameters,
+        )
+        self.assertEqual(mock_update_parameters_with_momentum.call_count, 2)
+
+        first_update_call = mock_update_parameters_with_momentum.call_args_list[0].kwargs
+        second_update_call = mock_update_parameters_with_momentum.call_args_list[1].kwargs
+
+        self.assertIs(first_update_call["parameters"], initial_parameters)
+        self.assertIs(first_update_call["gradients"], gradients_batch_1)
+        self.assertIs(first_update_call["velocity"], initial_velocity)
+        self.assertEqual(first_update_call["learning_rate"], 0.1)
+        self.assertEqual(first_update_call["beta"], 0.9)
+
+        self.assertIs(second_update_call["parameters"], momentum_parameters_1)
+        self.assertIs(second_update_call["gradients"], gradients_batch_2)
+        self.assertIs(second_update_call["velocity"], velocity_after_batch_1)
+        self.assertEqual(second_update_call["learning_rate"], 0.1)
+        self.assertEqual(second_update_call["beta"], 0.9)
+
+        second_batch_forward_call = mock_run_forward_pass.call_args_list[1].kwargs
+        train_epoch_forward_call = mock_run_forward_pass.call_args_list[2].kwargs
+
+        self.assertIs(second_batch_forward_call["parameters"], momentum_parameters_1)
+        self.assertIs(train_epoch_forward_call["parameters"], momentum_parameters_2)
+
+    def test_run_training_iterations_raises_error_for_negative_momentum_beta(
+        self,
+    ) -> None:
+        """Raise ValueError when momentum beta is negative."""
+        model_config = {
+            "name": "single_layer_softmax_classifier",
+            "input_size": 2,
+            "neurons_profile": [2],
+        }
+        training_config = _training_config(
+            momentum_enabled=True,
+            momentum_beta=-0.1,
+        )
+
+        x_train = np.array([[1.0, 2.0], [3.0, 4.0]])
+        y_train = np.array([1, 0])
+
+        with self.assertRaisesRegex(
+            ValueError,
+            "momentum beta must be greater than or equal to 0.0 and less than 1.0.",
+        ):
+            training.run_training_iterations(
+                x_train=x_train,
+                y_train=y_train,
+                model_config=model_config,
+                training_config=training_config,
+            )
+
+    def test_run_training_iterations_raises_error_for_momentum_beta_equal_to_one(
+        self,
+    ) -> None:
+        """Raise ValueError when momentum beta is equal to one."""
+        model_config = {
+            "name": "single_layer_softmax_classifier",
+            "input_size": 2,
+            "neurons_profile": [2],
+        }
+        training_config = _training_config(
+            momentum_enabled=True,
+            momentum_beta=1.0,
+        )
+
+        x_train = np.array([[1.0, 2.0], [3.0, 4.0]])
+        y_train = np.array([1, 0])
+
+        with self.assertRaisesRegex(
+            ValueError,
+            "momentum beta must be greater than or equal to 0.0 and less than 1.0.",
+        ):
+            training.run_training_iterations(
+                x_train=x_train,
+                y_train=y_train,
+                model_config=model_config,
+                training_config=training_config,
+            )
 
 
 if __name__ == "__main__":

@@ -1,4 +1,4 @@
-experiment_name: relu_128_128_128_normalized_minibatch_bs128_lr_02_l2_50_100e
+experiment_name: relu_128_128_128_normalized_minibatch_bs128_lr_002_l2_50_momentum_09_100e
 
 data_loading:
   training_path: data/train.csv
@@ -26,7 +26,7 @@ model:
 
 training:
   optimizer: batch_gradient_descent
-  learning_rate: 0.2
+  learning_rate: 0.02
   initialization_random_seed: 42
   num_epochs: 100
 
@@ -42,8 +42,8 @@ training:
     lambda: 50.0
 
   momentum:
-    enabled: false
-    beta: 0.0
+    enabled: true
+    beta: 0.9
 
 outputs:
   prediction_preview_size: 20

@@ -8,7 +8,6 @@ from training.backpropagation.gradient.gradients_cross_entropy import (
     gradient_computations_relu,
     gradient_computations_softmax,
 )
-from training.backpropagation.optimizer.batch_gradient_descent import batch_gradient_descent
 from training.error.categorial_cross_entropy import categorical_cross_entropy
 from training.regularization.weight_decay import (
     apply_weight_decay_to_gradients,
@@ -22,10 +21,9 @@ def run_backward_pass(
     parameters: dict[str, np.ndarray],
     neurons_profile: list[int],
     lambda_coefficient: float,
-    learning_rate: float = 1e-5,
     regularization_sample_count: int | None = None,
 ) -> dict[str, Any]:
-    """Run loss, gradient, and parameter-update computations.
+    """Run loss and gradient computations.
 
     Args:
         x_train: Training feature matrix.
@@ -34,12 +32,11 @@ def run_backward_pass(
         parameters: Dictionary containing the weights and bias parameters for each layer.
         neurons_profile: Quantity of neurons per layer, in order.
         lambda_coefficient: Weight decay coefficient.
-        learning_rate: Step size used to update the parameters.
         regularization_sample_count: Optional explicit sample count used to scale
             L2 regularization. Defaults to x_train.shape[0].
 
     Returns:
-        Dictionary containing loss, gradients, and updated parameters.
+        Dictionary containing loss and gradients.
     """
     y_one_hot = forward_pass_results["Y_one_hot"]
     layers = len(neurons_profile)
@@ -82,16 +79,7 @@ def run_backward_pass(
         regularization_sample_count=regularization_sample_count,
     )
 
-    for i in range(layers):
-        batch_gradient_descent(
-            gradients=gradients,
-            parameters=parameters,
-            layer=i + 1,
-            learning_rate=learning_rate,
-        )
-
     return {
         "loss": loss,
         "gradients": gradients,
-        "parameters": parameters,
     }

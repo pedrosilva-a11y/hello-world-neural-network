@@ -13,6 +13,13 @@ from training.batching.batching import (
 )
 from training.error.categorial_cross_entropy import categorical_cross_entropy
 from training.forward.forward_pass import run_forward_pass
+from training.optimization.gradient_descent import (
+    update_parameters_with_gradient_descent,
+)
+from training.optimization.momentum import (
+    initialize_velocity,
+    update_parameters_with_momentum,
+)
 from training.parameter.initialize import initialize_weights_and_bias
 from training.regularization.weight_decay import weight_decay_loss_term
 
@@ -91,6 +98,104 @@ def _get_initialization_random_seed(
     return int(random_seed)
 
 
+def _get_momentum_config(
+    training_config: dict[str, Any],
+) -> dict[str, Any]:
+    """Get the momentum configuration with backward-compatible defaults.
+
+    Args:
+        training_config: Training configuration section.
+
+    Returns:
+        Momentum configuration.
+    """
+    default_momentum_config = {
+        "enabled": False,
+        "beta": 0.0,
+    }
+
+    configured_momentum = training_config.get("momentum", {})
+
+    return {
+        **default_momentum_config,
+        **configured_momentum,
+    }
+
+
+def _is_momentum_enabled(
+    training_config: dict[str, Any],
+) -> bool:
+    """Return whether momentum updates are enabled.
+
+    Args:
+        training_config: Training configuration section.
+
+    Returns:
+        True when momentum is enabled.
+    """
+    momentum_config = _get_momentum_config(training_config=training_config)
+
+    return bool(momentum_config["enabled"])
+
+
+def _get_momentum_beta(
+    training_config: dict[str, Any],
+) -> float:
+    """Get the momentum beta value.
+
+    Args:
+        training_config: Training configuration section.
+
+    Returns:
+        Momentum beta value.
+    """
+    momentum_config = _get_momentum_config(training_config=training_config)
+
+    return float(momentum_config["beta"])
+
+
+def _update_parameters_from_backward_output(
+    parameters: dict[str, np.ndarray],
+    backward_output: dict[str, Any],
+    velocity: dict[str, np.ndarray] | None,
+    learning_rate: float,
+    training_config: dict[str, Any],
+) -> tuple[dict[str, np.ndarray], dict[str, np.ndarray] | None]:
+    """Update parameters using the configured optimizer behavior.
+
+    Args:
+        parameters: Current parameters before the update.
+        backward_output: Backward-pass output containing gradients.
+        velocity: Current momentum velocity state, when momentum is enabled.
+        learning_rate: Learning rate.
+        training_config: Training configuration section.
+
+    Returns:
+        Tuple containing updated parameters and updated velocity.
+    """
+    if not _is_momentum_enabled(training_config=training_config):
+        updated_parameters = update_parameters_with_gradient_descent(
+            parameters=parameters,
+            gradients=backward_output["gradients"],
+            learning_rate=learning_rate,
+        )
+
+        return updated_parameters, velocity
+
+    if velocity is None:
+        raise ValueError("velocity must be initialized when momentum is enabled.")
+
+    updated_parameters, updated_velocity = update_parameters_with_momentum(
+        parameters=parameters,
+        gradients=backward_output["gradients"],
+        velocity=velocity,
+        learning_rate=learning_rate,
+        beta=_get_momentum_beta(training_config=training_config),
+    )
+
+    return updated_parameters, updated_velocity
+
+
 def validate_training_configuration(
     model_config: dict[str, Any],
     training_config: dict[str, Any],
@@ -112,6 +217,8 @@ def validate_training_configuration(
     optimizer = str(training_config["optimizer"])
     batching_config = get_batching_config(training_config=training_config)
     batching_strategy = str(batching_config["strategy"])
+    momentum_config = _get_momentum_config(training_config=training_config)
+    momentum_beta = float(momentum_config["beta"])
 
     if model_name not in SUPPORTED_MODEL_NAMES:
         raise ValueError(f"Unsupported model name: {model_name}")
@@ -137,6 +244,11 @@ def validate_training_configuration(
 
         if batch_size < 1:
             raise ValueError("batch_size must be at least 1.")
+
+    if momentum_beta < 0.0 or momentum_beta >= 1.0:
+        raise ValueError(
+            "momentum beta must be greater than or equal to 0.0 and less than 1.0.",
+        )
 
 
 def _copy_parameters(
@@ -245,6 +357,11 @@ def run_initial_training_step(
     )
     initial_parameters = _copy_parameters(parameters)
 
+    velocity: dict[str, np.ndarray] | None = None
+
+    if _is_momentum_enabled(training_config=training_config):
+        velocity = initialize_velocity(parameters=parameters)
+
     forward_output = run_forward_pass(
         x_train=x_train,
         y_train=y_train,
@@ -262,15 +379,24 @@ def run_initial_training_step(
         parameters=parameters,
         neurons_profile=neurons_profile,
         lambda_coefficient=lambda_coefficient,
-        learning_rate=learning_rate,
         regularization_sample_count=x_train.shape[0],
     )
+
+    updated_parameters, _updated_velocity = _update_parameters_from_backward_output(
+        parameters=parameters,
+        backward_output=backward_output,
+        velocity=velocity,
+        learning_rate=learning_rate,
+        training_config=training_config,
+    )
+
+    backward_output["parameters"] = updated_parameters
 
     return {
         "initial_parameters": initial_parameters,
         "forward_output": forward_output,
         "backward_output": backward_output,
-        "updated_parameters": backward_output["parameters"],
+        "updated_parameters": updated_parameters,
     }
 
 
@@ -308,6 +434,11 @@ def _run_full_batch_training_iterations(
         neurons_profile=neurons_profile,
         random_seed=initialization_random_seed,
     )
+
+    velocity: dict[str, np.ndarray] | None = None
+
+    if _is_momentum_enabled(training_config=training_config):
+        velocity = initialize_velocity(parameters=parameters)
 
     train_loss_history: list[float] = []
     train_accuracy_history: list[float] = []
@@ -374,7 +505,6 @@ def _run_full_batch_training_iterations(
             parameters=parameters,
             neurons_profile=neurons_profile,
             lambda_coefficient=lambda_coefficient,
-            learning_rate=learning_rate,
             regularization_sample_count=x_train.shape[0],
         )
 
@@ -391,7 +521,13 @@ def _run_full_batch_training_iterations(
             best_validation_accuracy = validation_accuracy
             best_iteration = iteration_index + 1
 
-        parameters = backward_output["parameters"]
+        parameters, velocity = _update_parameters_from_backward_output(
+            parameters=parameters,
+            backward_output=backward_output,
+            velocity=velocity,
+            learning_rate=learning_rate,
+            training_config=training_config,
+        )
 
         train_loss_history.append(train_loss)
         train_accuracy_history.append(train_accuracy)
@@ -461,6 +597,11 @@ def _run_mini_batch_training_iterations(
         random_seed=initialization_random_seed,
     )
 
+    velocity: dict[str, np.ndarray] | None = None
+
+    if _is_momentum_enabled(training_config=training_config):
+        velocity = initialize_velocity(parameters=parameters)
+
     train_loss_history: list[float] = []
     train_accuracy_history: list[float] = []
     validation_loss_history: list[float] = []
@@ -503,11 +644,16 @@ def _run_mini_batch_training_iterations(
                 parameters=parameters,
                 neurons_profile=neurons_profile,
                 lambda_coefficient=lambda_coefficient,
-                learning_rate=learning_rate,
                 regularization_sample_count=regularization_sample_count,
             )
 
-            parameters = backward_output["parameters"]
+            parameters, velocity = _update_parameters_from_backward_output(
+                parameters=parameters,
+                backward_output=backward_output,
+                velocity=velocity,
+                learning_rate=learning_rate,
+                training_config=training_config,
+            )
 
         train_forward_output = run_forward_pass(
             x_train=x_train,

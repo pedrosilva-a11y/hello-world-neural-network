@@ -136,6 +136,13 @@ def main() -> None:
         config=config,
         section_name="outputs",
     )
+    momentum_config = training_config.get(
+        "momentum",
+        {
+            "enabled": False,
+            "beta": 0.0,
+        },
+    )
 
     x_full_train_matrix, y_full_train_array, x_test_matrix = (
         run_digit_recognizer_preprocessing_pipeline(
@@ -199,6 +206,10 @@ def main() -> None:
                 "enabled": training_config["regularization"]["enabled"],
                 "type": training_config["regularization"]["type"],
                 "lambda": training_config["regularization"]["lambda"],
+            },
+            "momentum": {
+                "enabled": momentum_config["enabled"],
+                "beta": momentum_config["beta"],
             },
             "batching": {
                 "strategy": training_config["batching"]["strategy"],
@@ -267,6 +278,12 @@ def main() -> None:
 
     print("Batching strategy:")
     print(training_config["batching"]["strategy"])
+
+    print("Momentum enabled:")
+    print(momentum_config["enabled"])
+
+    print("Momentum beta:")
+    print(momentum_config["beta"])
 
     print("Final training objective loss:")
     print(training_output["train_loss"][-1])
