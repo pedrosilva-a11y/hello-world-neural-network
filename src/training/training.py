@@ -37,12 +37,20 @@ class TrainingIterationsOutput(TypedDict):
     """Output values from multiple training iterations."""
 
     final_parameters: dict[str, np.ndarray]
+    best_parameters: dict[str, np.ndarray]
     train_predictions: np.ndarray
     validation_predictions: np.ndarray
     train_loss: list[float]
     train_accuracy: list[float]
     validation_accuracy: list[float]
     validation_loss: list[float]
+    best_train_loss: float | None
+    best_train_accuracy: float | None
+    best_validation_loss: float | None
+    best_validation_accuracy: float | None
+    best_iteration: int | None
+    best_epoch: int | None
+    checkpoint_metric: str
 
 
 def _get_lambda_coefficient(
@@ -260,7 +268,7 @@ def _run_full_batch_training_iterations(
         y_validation: Optional validation label array.
 
     Returns:
-        Dictionary containing final parameters and metric histories.
+        Dictionary containing final parameters, best parameters, and metric histories.
     """
     neurons_profile = list(model_config["neurons_profile"])
     learning_rate = float(training_config["learning_rate"])
@@ -279,11 +287,18 @@ def _run_full_batch_training_iterations(
     train_predictions = np.array([])
     validation_predictions = np.array([])
 
+    best_parameters: dict[str, np.ndarray] | None = None
+    best_train_loss: float | None = None
+    best_train_accuracy: float | None = None
+    best_validation_loss: float | None = None
+    best_validation_accuracy: float | None = None
+    best_iteration: int | None = None
+
     lambda_coefficient = _get_lambda_coefficient(
         training_config=training_config,
     )
 
-    for _iteration in range(num_iterations):
+    for iteration_index in range(num_iterations):
         train_forward_output = run_forward_pass(
             x_train=x_train,
             y_train=y_train,
@@ -295,6 +310,10 @@ def _run_full_batch_training_iterations(
             y=y_train,
             ypred=train_forward_output["predictions"],
         )
+
+        candidate_parameters = _copy_parameters(parameters)
+        validation_loss: float | None = None
+        validation_accuracy: float | None = None
 
         if x_validation is not None and y_validation is not None:
             validation_forward_output = run_forward_pass(
@@ -313,11 +332,10 @@ def _run_full_batch_training_iterations(
                 forward_output=validation_forward_output,
                 neurons_profile=neurons_profile,
             )
+            validation_accuracy = validation_evaluation_output["accuracy"]
 
             validation_loss_history.append(validation_loss)
-            validation_accuracy_history.append(
-                validation_evaluation_output["accuracy"],
-            )
+            validation_accuracy_history.append(validation_accuracy)
             validation_predictions = validation_forward_output["predictions"]
 
         backward_output = run_backward_pass(
@@ -329,20 +347,44 @@ def _run_full_batch_training_iterations(
             learning_rate=learning_rate,
         )
 
+        train_loss = backward_output["loss"]
+        train_accuracy = train_evaluation_output["accuracy"]
+
+        if validation_loss is not None and (
+            best_validation_loss is None or validation_loss < best_validation_loss
+        ):
+            best_parameters = candidate_parameters
+            best_train_loss = train_loss
+            best_train_accuracy = train_accuracy
+            best_validation_loss = validation_loss
+            best_validation_accuracy = validation_accuracy
+            best_iteration = iteration_index + 1
+
         parameters = backward_output["parameters"]
 
-        train_loss_history.append(backward_output["loss"])
-        train_accuracy_history.append(train_evaluation_output["accuracy"])
+        train_loss_history.append(train_loss)
+        train_accuracy_history.append(train_accuracy)
         train_predictions = train_forward_output["predictions"]
+
+    if best_parameters is None:
+        best_parameters = _copy_parameters(parameters)
 
     return {
         "final_parameters": parameters,
+        "best_parameters": best_parameters,
         "train_predictions": train_predictions,
         "validation_predictions": validation_predictions,
         "train_loss": train_loss_history,
         "train_accuracy": train_accuracy_history,
         "validation_loss": validation_loss_history,
         "validation_accuracy": validation_accuracy_history,
+        "best_train_loss": best_train_loss,
+        "best_train_accuracy": best_train_accuracy,
+        "best_validation_loss": best_validation_loss,
+        "best_validation_accuracy": best_validation_accuracy,
+        "best_iteration": best_iteration,
+        "best_epoch": None,
+        "checkpoint_metric": "validation_loss",
     }
 
 
@@ -365,7 +407,7 @@ def _run_mini_batch_training_iterations(
         y_validation: Optional validation label array.
 
     Returns:
-        Dictionary containing final parameters and epoch-level metric histories.
+        Dictionary containing final parameters, best parameters, and metric histories.
     """
     neurons_profile = list(model_config["neurons_profile"])
     learning_rate = float(training_config["learning_rate"])
@@ -391,11 +433,18 @@ def _run_mini_batch_training_iterations(
     train_predictions = np.array([])
     validation_predictions = np.array([])
 
+    best_parameters: dict[str, np.ndarray] | None = None
+    best_train_loss: float | None = None
+    best_train_accuracy: float | None = None
+    best_validation_loss: float | None = None
+    best_validation_accuracy: float | None = None
+    best_epoch: int | None = None
+
     lambda_coefficient = _get_lambda_coefficient(
         training_config=training_config,
     )
 
-    for _epoch in range(num_epochs):
+    for epoch_index in range(num_epochs):
         for x_batch, y_batch in iter_mini_batches(
             x_train=x_train,
             y_train=y_train,
@@ -440,9 +489,10 @@ def _run_mini_batch_training_iterations(
             neurons_profile=neurons_profile,
             lambda_coefficient=lambda_coefficient,
         )
+        train_accuracy = train_evaluation_output["accuracy"]
 
         train_loss_history.append(train_loss)
-        train_accuracy_history.append(train_evaluation_output["accuracy"])
+        train_accuracy_history.append(train_accuracy)
         train_predictions = train_forward_output["predictions"]
 
         if x_validation is not None and y_validation is not None:
@@ -462,21 +512,42 @@ def _run_mini_batch_training_iterations(
                 forward_output=validation_forward_output,
                 neurons_profile=neurons_profile,
             )
+            validation_accuracy = validation_evaluation_output["accuracy"]
 
             validation_loss_history.append(validation_loss)
-            validation_accuracy_history.append(
-                validation_evaluation_output["accuracy"],
-            )
+            validation_accuracy_history.append(validation_accuracy)
             validation_predictions = validation_forward_output["predictions"]
+
+            if (
+                best_validation_loss is None
+                or validation_loss < best_validation_loss
+            ):
+                best_parameters = _copy_parameters(parameters)
+                best_train_loss = train_loss
+                best_train_accuracy = train_accuracy
+                best_validation_loss = validation_loss
+                best_validation_accuracy = validation_accuracy
+                best_epoch = epoch_index + 1
+
+    if best_parameters is None:
+        best_parameters = _copy_parameters(parameters)
 
     return {
         "final_parameters": parameters,
+        "best_parameters": best_parameters,
         "train_predictions": train_predictions,
         "validation_predictions": validation_predictions,
         "train_loss": train_loss_history,
         "train_accuracy": train_accuracy_history,
         "validation_loss": validation_loss_history,
         "validation_accuracy": validation_accuracy_history,
+        "best_train_loss": best_train_loss,
+        "best_train_accuracy": best_train_accuracy,
+        "best_validation_loss": best_validation_loss,
+        "best_validation_accuracy": best_validation_accuracy,
+        "best_iteration": None,
+        "best_epoch": best_epoch,
+        "checkpoint_metric": "validation_loss",
     }
 
 
@@ -499,8 +570,8 @@ def run_training_iterations(
         y_validation: Optional validation label array.
 
     Returns:
-        Dictionary containing final parameters, final predictions, train loss
-        history, train accuracy history, validation loss history, and
+        Dictionary containing final parameters, best parameters, final predictions,
+        train loss history, train accuracy history, validation loss history, and
         validation accuracy history.
 
     Raises:

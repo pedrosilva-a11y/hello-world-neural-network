@@ -332,6 +332,25 @@ class TestRunTrainingIterations(unittest.TestCase):
         self.assertEqual(result["train_accuracy"], [0.5, 1.0])
         self.assertEqual(result["validation_loss"], [])
         self.assertEqual(result["validation_accuracy"], [])
+        np.testing.assert_array_equal(
+            result["best_parameters"]["W1"],
+            updated_parameters_iteration_2["W1"],
+        )
+        np.testing.assert_array_equal(
+            result["best_parameters"]["b1"],
+            updated_parameters_iteration_2["b1"],
+        )
+        self.assertIsNot(
+            result["best_parameters"]["W1"],
+            updated_parameters_iteration_2["W1"],
+        )
+        self.assertIsNone(result["best_train_loss"])
+        self.assertIsNone(result["best_train_accuracy"])
+        self.assertIsNone(result["best_validation_loss"])
+        self.assertIsNone(result["best_validation_accuracy"])
+        self.assertIsNone(result["best_iteration"])
+        self.assertIsNone(result["best_epoch"])
+        self.assertEqual(result["checkpoint_metric"], "validation_loss")
 
         mock_initialize_weights_and_bias.assert_called_once_with(
             x_train=x_train,
@@ -558,6 +577,25 @@ class TestRunTrainingIterations(unittest.TestCase):
         self.assertEqual(result["train_accuracy"], [0.5, 1.0])
         self.assertEqual(result["validation_loss"], [1.4, 0.9])
         self.assertEqual(result["validation_accuracy"], [0.25, 0.75])
+        np.testing.assert_array_equal(
+            result["best_parameters"]["W1"],
+            updated_parameters_iteration_1["W1"],
+        )
+        np.testing.assert_array_equal(
+            result["best_parameters"]["b1"],
+            updated_parameters_iteration_1["b1"],
+        )
+        self.assertIsNot(
+            result["best_parameters"]["W1"],
+            updated_parameters_iteration_1["W1"],
+        )
+        self.assertEqual(result["best_train_loss"], 0.8)
+        self.assertEqual(result["best_train_accuracy"], 1.0)
+        self.assertEqual(result["best_validation_loss"], 0.9)
+        self.assertEqual(result["best_validation_accuracy"], 0.75)
+        self.assertEqual(result["best_iteration"], 2)
+        self.assertIsNone(result["best_epoch"])
+        self.assertEqual(result["checkpoint_metric"], "validation_loss")
 
         mock_initialize_weights_and_bias.assert_called_once_with(
             x_train=x_train,
@@ -624,6 +662,128 @@ class TestRunTrainingIterations(unittest.TestCase):
 
         self.assertEqual(first_backward_call["lambda_coefficient"], 0.0)
         self.assertEqual(second_backward_call["lambda_coefficient"], 0.0)
+
+    def test_run_training_iterations_keeps_earlier_best_full_batch_checkpoint(
+        self,
+    ) -> None:
+        """Keep the earlier full-batch checkpoint when validation loss worsens."""
+        model_config = {
+            "name": "single_layer_softmax_classifier",
+            "input_size": 2,
+            "neurons_profile": [2],
+        }
+        training_config = _training_config(num_iterations=2)
+
+        x_train = np.array([[1.0, 2.0], [3.0, 4.0]])
+        y_train = np.array([1, 0])
+        x_validation = np.array([[5.0, 6.0], [7.0, 8.0]])
+        y_validation = np.array([0, 1])
+
+        initial_parameters = {
+            "W1": np.array([[0.1, 0.2], [0.3, 0.4]]),
+            "b1": np.array([[0.0, 0.0]]),
+        }
+        updated_parameters_iteration_1 = {
+            "W1": np.array([[0.11, 0.19], [0.31, 0.39]]),
+            "b1": np.array([[0.01, -0.01]]),
+        }
+        updated_parameters_iteration_2 = {
+            "W1": np.array([[0.12, 0.18], [0.32, 0.38]]),
+            "b1": np.array([[0.02, -0.02]]),
+        }
+
+        with (
+            patch.object(
+                training,
+                "initialize_weights_and_bias",
+                return_value=initial_parameters,
+            ),
+            patch.object(
+                training,
+                "run_forward_pass",
+                side_effect=[
+                    {
+                        "Z1": np.zeros((2, 2)),
+                        "A1": np.array([[0.4, 0.6], [0.7, 0.3]]),
+                        "predictions": np.array([1, 0]),
+                        "Y_one_hot": np.zeros((2, 2)),
+                    },
+                    {
+                        "Z1": np.zeros((2, 2)),
+                        "A1": np.array([[0.8, 0.2], [0.6, 0.4]]),
+                        "predictions": np.array([0, 0]),
+                        "Y_one_hot": np.zeros((2, 2)),
+                    },
+                    {
+                        "Z1": np.zeros((2, 2)),
+                        "A1": np.array([[0.3, 0.7], [0.8, 0.2]]),
+                        "predictions": np.array([1, 0]),
+                        "Y_one_hot": np.zeros((2, 2)),
+                    },
+                    {
+                        "Z1": np.zeros((2, 2)),
+                        "A1": np.array([[0.6, 0.4], [0.55, 0.45]]),
+                        "predictions": np.array([0, 0]),
+                        "Y_one_hot": np.zeros((2, 2)),
+                    },
+                ],
+            ),
+            patch.object(
+                training,
+                "run_evaluation",
+                side_effect=[
+                    {"accuracy": 0.5},
+                    {"accuracy": 0.75},
+                    {"accuracy": 1.0},
+                    {"accuracy": 0.25},
+                ],
+            ),
+            patch.object(
+                training,
+                "categorical_cross_entropy",
+                side_effect=[0.4, 0.9],
+            ),
+            patch.object(
+                training,
+                "run_backward_pass",
+                side_effect=[
+                    {
+                        "loss": 1.2,
+                        "gradients": {},
+                        "parameters": updated_parameters_iteration_1,
+                    },
+                    {
+                        "loss": 0.8,
+                        "gradients": {},
+                        "parameters": updated_parameters_iteration_2,
+                    },
+                ],
+            ),
+        ):
+            result = training.run_training_iterations(
+                x_train=x_train,
+                y_train=y_train,
+                x_validation=x_validation,
+                y_validation=y_validation,
+                model_config=model_config,
+                training_config=training_config,
+            )
+
+        np.testing.assert_array_equal(
+            result["best_parameters"]["W1"],
+            initial_parameters["W1"],
+        )
+        np.testing.assert_array_equal(
+            result["best_parameters"]["b1"],
+            initial_parameters["b1"],
+        )
+        self.assertIsNot(result["best_parameters"]["W1"], initial_parameters["W1"])
+        self.assertEqual(result["best_train_loss"], 1.2)
+        self.assertEqual(result["best_train_accuracy"], 0.5)
+        self.assertEqual(result["best_validation_loss"], 0.4)
+        self.assertEqual(result["best_validation_accuracy"], 0.75)
+        self.assertEqual(result["best_iteration"], 1)
+        self.assertIsNone(result["best_epoch"])
 
     def test_run_training_iterations_runs_mini_batch_training(self) -> None:
         """Run mini-batch updates and track epoch-level metrics."""
@@ -834,6 +994,25 @@ class TestRunTrainingIterations(unittest.TestCase):
         self.assertEqual(result["train_accuracy"], [0.75, 1.0])
         self.assertEqual(result["validation_loss"], [0.7, 0.5])
         self.assertEqual(result["validation_accuracy"], [0.5, 0.75])
+        np.testing.assert_array_equal(
+            result["best_parameters"]["W1"],
+            updated_parameters_batch_4["W1"],
+        )
+        np.testing.assert_array_equal(
+            result["best_parameters"]["b1"],
+            updated_parameters_batch_4["b1"],
+        )
+        self.assertIsNot(
+            result["best_parameters"]["W1"],
+            updated_parameters_batch_4["W1"],
+        )
+        self.assertEqual(result["best_train_loss"], 0.43000000000000005)
+        self.assertEqual(result["best_train_accuracy"], 1.0)
+        self.assertEqual(result["best_validation_loss"], 0.5)
+        self.assertEqual(result["best_validation_accuracy"], 0.75)
+        self.assertIsNone(result["best_iteration"])
+        self.assertEqual(result["best_epoch"], 2)
+        self.assertEqual(result["checkpoint_metric"], "validation_loss")
 
         mock_initialize_weights_and_bias.assert_called_once_with(
             x_train=x_train,
@@ -1105,8 +1284,12 @@ class TestRunTrainingIterations(unittest.TestCase):
             )
 
         self.assertIs(result["final_parameters"], parameters)
+        np.testing.assert_array_equal(result["best_parameters"]["W1"], parameters["W1"])
         self.assertEqual(result["train_loss"], [0.5])
         self.assertEqual(result["train_accuracy"], [1.0])
+        self.assertIsNone(result["best_validation_loss"])
+        self.assertIsNone(result["best_iteration"])
+        self.assertIsNone(result["best_epoch"])
 
         mock_initialize_weights_and_bias.assert_called_once_with(
             x_train=x_train,
@@ -1205,8 +1388,12 @@ class TestRunTrainingIterations(unittest.TestCase):
             )
 
         self.assertIs(result["final_parameters"], parameters)
+        np.testing.assert_array_equal(result["best_parameters"]["W1"], parameters["W1"])
         self.assertEqual(result["train_loss"], [0.5])
         self.assertEqual(result["train_accuracy"], [1.0])
+        self.assertIsNone(result["best_validation_loss"])
+        self.assertIsNone(result["best_iteration"])
+        self.assertIsNone(result["best_epoch"])
 
         mock_initialize_weights_and_bias.assert_called_once_with(
             x_train=x_train,

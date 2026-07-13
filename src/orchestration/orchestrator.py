@@ -166,10 +166,16 @@ def main() -> None:
 
     experiment_results_dir = ROOT_DIR / "results" / experiment_name
     parameters_path = experiment_results_dir / "parameters.npz"
+    final_parameters_path = experiment_results_dir / "parameters_final.npz"
+
+    save_parameters(
+        parameters=training_output["best_parameters"],
+        file_path=parameters_path,
+    )
 
     save_parameters(
         parameters=training_output["final_parameters"],
-        file_path=parameters_path,
+        file_path=final_parameters_path,
     )
 
     prediction_preview_size = int(outputs_config["prediction_preview_size"])
@@ -182,6 +188,9 @@ def main() -> None:
             "model": {
                 "name": model_config["name"],
                 "neurons_profile": model_config["neurons_profile"],
+                "selected_parameter_shapes": get_parameter_shapes(
+                    parameters=training_output["best_parameters"],
+                ),
                 "final_parameter_shapes": get_parameter_shapes(
                     parameters=training_output["final_parameters"],
                 ),
@@ -196,6 +205,17 @@ def main() -> None:
                 "batch_size": training_config["batching"]["batch_size"],
                 "shuffle": training_config["batching"]["shuffle"],
                 "random_seed": training_config["batching"]["random_seed"],
+            },
+            "checkpoint": {
+                "selection_metric": training_output["checkpoint_metric"],
+                "selected_parameter_path": str(parameters_path),
+                "final_parameter_path": str(final_parameters_path),
+                "best_train_loss": training_output["best_train_loss"],
+                "best_train_accuracy": training_output["best_train_accuracy"],
+                "best_validation_loss": training_output["best_validation_loss"],
+                "best_validation_accuracy": training_output["best_validation_accuracy"],
+                "best_iteration": training_output["best_iteration"],
+                "best_epoch": training_output["best_epoch"],
             },
             "data_shapes": {
                 "full_train": list(x_full_train_matrix.shape),
@@ -252,6 +272,33 @@ def main() -> None:
 
     print("Final validation accuracy:")
     print(training_output["validation_accuracy"][-1])
+
+    print("Checkpoint selection metric:")
+    print(training_output["checkpoint_metric"])
+
+    print("Best training objective loss:")
+    print(training_output["best_train_loss"])
+
+    print("Best training accuracy:")
+    print(training_output["best_train_accuracy"])
+
+    print("Best validation categorical cross-entropy loss:")
+    print(training_output["best_validation_loss"])
+
+    print("Best validation accuracy:")
+    print(training_output["best_validation_accuracy"])
+
+    print("Best iteration:")
+    print(training_output["best_iteration"])
+
+    print("Best epoch:")
+    print(training_output["best_epoch"])
+
+    print("Selected parameters saved to:")
+    print(parameters_path)
+
+    print("Final parameters saved to:")
+    print(final_parameters_path)
 
     print("Summary saved to:")
     print(summary_path)
