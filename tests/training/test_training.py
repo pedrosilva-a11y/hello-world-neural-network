@@ -15,18 +15,36 @@ def _training_config(
     regularization_enabled: bool = False,
     regularization_type: str = "none",
     lambda_coefficient: float = 0.0,
+    batching_strategy: str = "full_batch",
+    batch_size: int | None = None,
+    shuffle: bool = False,
+    random_seed: int = 42,
+    num_epochs: int | None = None,
 ) -> dict:
-    """Create a training config with regularization fields."""
-    return {
+    """Create a training config with regularization and batching fields."""
+    config = {
         "optimizer": optimizer,
-        "num_iterations": num_iterations,
         "learning_rate": learning_rate,
         "regularization": {
             "enabled": regularization_enabled,
             "type": regularization_type,
             "lambda": lambda_coefficient,
         },
+        "batching": {
+            "strategy": batching_strategy,
+            "batch_size": batch_size,
+            "shuffle": shuffle,
+            "random_seed": random_seed,
+        },
     }
+
+    if batching_strategy == "full_batch":
+        config["num_iterations"] = num_iterations
+
+    if batching_strategy == "mini_batch":
+        config["num_epochs"] = num_epochs if num_epochs is not None else 1
+
+    return config
 
 
 class TestRunInitialTrainingStep(unittest.TestCase):
@@ -170,8 +188,10 @@ class TestRunInitialTrainingStep(unittest.TestCase):
 class TestRunTrainingIterations(unittest.TestCase):
     """Tests for run_training_iterations."""
 
-    def test_run_training_iterations_runs_multiple_training_passes(self) -> None:
-        """Run multiple training forward, evaluation, backward, and update steps."""
+    def test_run_training_iterations_runs_multiple_full_batch_training_passes(
+        self,
+    ) -> None:
+        """Run multiple full-batch training steps."""
         model_config = {
             "name": "single_layer_softmax_classifier",
             "input_size": 2,
@@ -343,7 +363,7 @@ class TestRunTrainingIterations(unittest.TestCase):
         self.assertEqual(second_backward_call["lambda_coefficient"], 0.25)
 
     def test_run_training_iterations_tracks_validation_metrics(self) -> None:
-        """Run validation loss and accuracy during each training iteration."""
+        """Run validation loss and accuracy during each full-batch iteration."""
         model_config = {
             "name": "single_layer_softmax_classifier",
             "input_size": 2,
@@ -605,6 +625,241 @@ class TestRunTrainingIterations(unittest.TestCase):
         self.assertEqual(first_backward_call["lambda_coefficient"], 0.0)
         self.assertEqual(second_backward_call["lambda_coefficient"], 0.0)
 
+    def test_run_training_iterations_runs_mini_batch_training(self) -> None:
+        """Run mini-batch updates and track epoch-level metrics."""
+        model_config = {
+            "name": "single_layer_softmax_classifier",
+            "input_size": 2,
+            "neurons_profile": [2],
+        }
+        training_config = _training_config(
+            batching_strategy="mini_batch",
+            batch_size=2,
+            shuffle=False,
+            num_epochs=2,
+            regularization_enabled=True,
+            regularization_type="l2",
+            lambda_coefficient=0.3,
+        )
+
+        x_train = np.array(
+            [
+                [1.0, 0.0],
+                [0.0, 1.0],
+                [1.0, 1.0],
+                [0.5, 0.5],
+            ],
+        )
+        y_train = np.array([0, 1, 1, 0])
+        x_validation = np.array(
+            [
+                [0.25, 0.75],
+                [0.75, 0.25],
+            ],
+        )
+        y_validation = np.array([1, 0])
+
+        initial_parameters = {
+            "W1": np.array(
+                [
+                    [0.1, 0.2],
+                    [0.3, 0.4],
+                ],
+            ),
+            "b1": np.array([[0.0, 0.0]]),
+        }
+        updated_parameters_batch_1 = {
+            "W1": np.array([[0.11, 0.19], [0.31, 0.39]]),
+            "b1": np.array([[0.01, -0.01]]),
+        }
+        updated_parameters_batch_2 = {
+            "W1": np.array([[0.12, 0.18], [0.32, 0.38]]),
+            "b1": np.array([[0.02, -0.02]]),
+        }
+        updated_parameters_batch_3 = {
+            "W1": np.array([[0.13, 0.17], [0.33, 0.37]]),
+            "b1": np.array([[0.03, -0.03]]),
+        }
+        updated_parameters_batch_4 = {
+            "W1": np.array([[0.14, 0.16], [0.34, 0.36]]),
+            "b1": np.array([[0.04, -0.04]]),
+        }
+
+        batch_forward_1 = {
+            "Z1": np.zeros((2, 2)),
+            "A1": np.array([[0.9, 0.1], [0.2, 0.8]]),
+            "predictions": np.array([0, 1]),
+            "Y_one_hot": np.array([[1.0, 0.0], [0.0, 1.0]]),
+        }
+        batch_forward_2 = {
+            "Z1": np.zeros((2, 2)),
+            "A1": np.array([[0.3, 0.7], [0.6, 0.4]]),
+            "predictions": np.array([1, 0]),
+            "Y_one_hot": np.array([[0.0, 1.0], [1.0, 0.0]]),
+        }
+        train_forward_epoch_1 = {
+            "Z1": np.zeros((4, 2)),
+            "A1": np.array(
+                [
+                    [0.8, 0.2],
+                    [0.1, 0.9],
+                    [0.3, 0.7],
+                    [0.6, 0.4],
+                ],
+            ),
+            "predictions": np.array([0, 1, 1, 0]),
+            "Y_one_hot": np.zeros((4, 2)),
+        }
+        validation_forward_epoch_1 = {
+            "Z1": np.zeros((2, 2)),
+            "A1": np.array([[0.3, 0.7], [0.8, 0.2]]),
+            "predictions": np.array([1, 0]),
+            "Y_one_hot": np.zeros((2, 2)),
+        }
+        batch_forward_3 = {
+            "Z1": np.zeros((2, 2)),
+            "A1": np.array([[0.7, 0.3], [0.4, 0.6]]),
+            "predictions": np.array([0, 1]),
+            "Y_one_hot": np.array([[1.0, 0.0], [0.0, 1.0]]),
+        }
+        batch_forward_4 = {
+            "Z1": np.zeros((2, 2)),
+            "A1": np.array([[0.2, 0.8], [0.7, 0.3]]),
+            "predictions": np.array([1, 0]),
+            "Y_one_hot": np.array([[0.0, 1.0], [1.0, 0.0]]),
+        }
+        train_forward_epoch_2 = {
+            "Z1": np.zeros((4, 2)),
+            "A1": np.array(
+                [
+                    [0.7, 0.3],
+                    [0.2, 0.8],
+                    [0.4, 0.6],
+                    [0.55, 0.45],
+                ],
+            ),
+            "predictions": np.array([0, 1, 1, 0]),
+            "Y_one_hot": np.zeros((4, 2)),
+        }
+        validation_forward_epoch_2 = {
+            "Z1": np.zeros((2, 2)),
+            "A1": np.array([[0.4, 0.6], [0.55, 0.45]]),
+            "predictions": np.array([1, 0]),
+            "Y_one_hot": np.zeros((2, 2)),
+        }
+
+        with (
+            patch.object(
+                training,
+                "initialize_weights_and_bias",
+                return_value=initial_parameters,
+            ) as mock_initialize_weights_and_bias,
+            patch.object(
+                training,
+                "run_forward_pass",
+                side_effect=[
+                    batch_forward_1,
+                    batch_forward_2,
+                    train_forward_epoch_1,
+                    validation_forward_epoch_1,
+                    batch_forward_3,
+                    batch_forward_4,
+                    train_forward_epoch_2,
+                    validation_forward_epoch_2,
+                ],
+            ) as mock_run_forward_pass,
+            patch.object(
+                training,
+                "run_backward_pass",
+                side_effect=[
+                    {
+                        "loss": 1.1,
+                        "gradients": {},
+                        "parameters": updated_parameters_batch_1,
+                    },
+                    {
+                        "loss": 1.0,
+                        "gradients": {},
+                        "parameters": updated_parameters_batch_2,
+                    },
+                    {
+                        "loss": 0.9,
+                        "gradients": {},
+                        "parameters": updated_parameters_batch_3,
+                    },
+                    {
+                        "loss": 0.8,
+                        "gradients": {},
+                        "parameters": updated_parameters_batch_4,
+                    },
+                ],
+            ) as mock_run_backward_pass,
+            patch.object(
+                training,
+                "run_evaluation",
+                side_effect=[
+                    {"accuracy": 0.75},
+                    {"accuracy": 0.5},
+                    {"accuracy": 1.0},
+                    {"accuracy": 0.75},
+                ],
+            ) as mock_run_evaluation,
+            patch.object(
+                training,
+                "categorical_cross_entropy",
+                side_effect=[0.6, 0.7, 0.4, 0.5],
+            ) as mock_categorical_cross_entropy,
+            patch.object(
+                training,
+                "weight_decay_loss_term",
+                side_effect=[0.05, 0.03],
+            ) as mock_weight_decay_loss_term,
+        ):
+            result = training.run_training_iterations(
+                x_train=x_train,
+                y_train=y_train,
+                x_validation=x_validation,
+                y_validation=y_validation,
+                model_config=model_config,
+                training_config=training_config,
+            )
+
+        self.assertIs(result["final_parameters"], updated_parameters_batch_4)
+        self.assertIs(result["train_predictions"], train_forward_epoch_2["predictions"])
+        self.assertIs(
+            result["validation_predictions"],
+            validation_forward_epoch_2["predictions"],
+        )
+        self.assertEqual(result["train_loss"], [0.65, 0.43000000000000005])
+        self.assertEqual(result["train_accuracy"], [0.75, 1.0])
+        self.assertEqual(result["validation_loss"], [0.7, 0.5])
+        self.assertEqual(result["validation_accuracy"], [0.5, 0.75])
+
+        mock_initialize_weights_and_bias.assert_called_once_with(
+            x_train=x_train,
+            neurons_profile=[2],
+        )
+        self.assertEqual(mock_run_forward_pass.call_count, 8)
+        self.assertEqual(mock_run_backward_pass.call_count, 4)
+        self.assertEqual(mock_run_evaluation.call_count, 4)
+        self.assertEqual(mock_categorical_cross_entropy.call_count, 4)
+        self.assertEqual(mock_weight_decay_loss_term.call_count, 2)
+
+        first_backward_call = mock_run_backward_pass.call_args_list[0].kwargs
+        second_backward_call = mock_run_backward_pass.call_args_list[1].kwargs
+        third_backward_call = mock_run_backward_pass.call_args_list[2].kwargs
+        fourth_backward_call = mock_run_backward_pass.call_args_list[3].kwargs
+
+        np.testing.assert_array_equal(first_backward_call["x_train"], x_train[:2])
+        np.testing.assert_array_equal(second_backward_call["x_train"], x_train[2:])
+        np.testing.assert_array_equal(third_backward_call["x_train"], x_train[:2])
+        np.testing.assert_array_equal(fourth_backward_call["x_train"], x_train[2:])
+
+        self.assertEqual(first_backward_call["lambda_coefficient"], 0.3)
+        self.assertEqual(second_backward_call["lambda_coefficient"], 0.3)
+        self.assertEqual(third_backward_call["lambda_coefficient"], 0.3)
+        self.assertEqual(fourth_backward_call["lambda_coefficient"], 0.3)
+
     def test_run_training_iterations_raises_error_for_invalid_iterations(self) -> None:
         """Raise ValueError when num_iterations is less than one."""
         model_config = {
@@ -623,6 +878,85 @@ class TestRunTrainingIterations(unittest.TestCase):
         y_train = np.array([1, 0])
 
         with self.assertRaisesRegex(ValueError, "num_iterations must be at least 1."):
+            training.run_training_iterations(
+                x_train=x_train,
+                y_train=y_train,
+                model_config=model_config,
+                training_config=training_config,
+            )
+
+    def test_run_training_iterations_raises_error_for_invalid_mini_batch_epochs(
+        self,
+    ) -> None:
+        """Raise ValueError when num_epochs is less than one."""
+        model_config = {
+            "name": "single_layer_softmax_classifier",
+            "input_size": 2,
+            "neurons_profile": [2],
+        }
+        training_config = _training_config(
+            batching_strategy="mini_batch",
+            batch_size=2,
+            num_epochs=0,
+        )
+
+        x_train = np.array([[1.0, 2.0], [3.0, 4.0]])
+        y_train = np.array([1, 0])
+
+        with self.assertRaisesRegex(ValueError, "num_epochs must be at least 1."):
+            training.run_training_iterations(
+                x_train=x_train,
+                y_train=y_train,
+                model_config=model_config,
+                training_config=training_config,
+            )
+
+    def test_run_training_iterations_raises_error_for_invalid_mini_batch_size(
+        self,
+    ) -> None:
+        """Raise ValueError when batch_size is less than one."""
+        model_config = {
+            "name": "single_layer_softmax_classifier",
+            "input_size": 2,
+            "neurons_profile": [2],
+        }
+        training_config = _training_config(
+            batching_strategy="mini_batch",
+            batch_size=0,
+            num_epochs=2,
+        )
+
+        x_train = np.array([[1.0, 2.0], [3.0, 4.0]])
+        y_train = np.array([1, 0])
+
+        with self.assertRaisesRegex(ValueError, "batch_size must be at least 1."):
+            training.run_training_iterations(
+                x_train=x_train,
+                y_train=y_train,
+                model_config=model_config,
+                training_config=training_config,
+            )
+
+    def test_run_training_iterations_raises_error_for_unsupported_batching_strategy(
+        self,
+    ) -> None:
+        """Raise ValueError when the configured batching strategy is unsupported."""
+        model_config = {
+            "name": "single_layer_softmax_classifier",
+            "input_size": 2,
+            "neurons_profile": [2],
+        }
+        training_config = _training_config(
+            batching_strategy="stochastic",
+        )
+
+        x_train = np.array([[1.0, 2.0], [3.0, 4.0]])
+        y_train = np.array([1, 0])
+
+        with self.assertRaisesRegex(
+            ValueError,
+            "Unsupported batching strategy: stochastic",
+        ):
             training.run_training_iterations(
                 x_train=x_train,
                 y_train=y_train,

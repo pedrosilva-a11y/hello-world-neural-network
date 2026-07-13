@@ -191,6 +191,12 @@ def main() -> None:
                 "type": training_config["regularization"]["type"],
                 "lambda": training_config["regularization"]["lambda"],
             },
+            "batching": {
+                "strategy": training_config["batching"]["strategy"],
+                "batch_size": training_config["batching"]["batch_size"],
+                "shuffle": training_config["batching"]["shuffle"],
+                "random_seed": training_config["batching"]["random_seed"],
+            },
             "data_shapes": {
                 "full_train": list(x_full_train_matrix.shape),
                 "train": list(x_train_matrix.shape),
@@ -231,6 +237,9 @@ def main() -> None:
 
     print("Experiment name:")
     print(experiment_name)
+
+    print("Batching strategy:")
+    print(training_config["batching"]["strategy"])
 
     print("Final training objective loss:")
     print(training_output["train_loss"][-1])

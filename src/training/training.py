@@ -6,9 +6,15 @@ import numpy as np
 
 from evaluation.evaluation import run_evaluation
 from training.backpropagation.backward_pass import run_backward_pass
+from training.batching.batching import (
+    SUPPORTED_BATCHING_STRATEGIES,
+    get_batching_config,
+    iter_mini_batches,
+)
 from training.error.categorial_cross_entropy import categorical_cross_entropy
 from training.forward.forward_pass import run_forward_pass
 from training.parameter.initialize import initialize_weights_and_bias
+from training.regularization.weight_decay import weight_decay_loss_term
 
 SUPPORTED_MODEL_NAMES = {
     "single_layer_softmax_classifier",
@@ -39,6 +45,25 @@ class TrainingIterationsOutput(TypedDict):
     validation_loss: list[float]
 
 
+def _get_lambda_coefficient(
+    training_config: dict[str, Any],
+) -> float:
+    """Get the active L2 regularization coefficient.
+
+    Args:
+        training_config: Training configuration section.
+
+    Returns:
+        L2 lambda coefficient. Returns 0.0 when regularization is disabled.
+    """
+    regularization_config = training_config["regularization"]
+
+    if not bool(regularization_config["enabled"]):
+        return 0.0
+
+    return float(regularization_config["lambda"])
+
+
 def validate_training_configuration(
     model_config: dict[str, Any],
     training_config: dict[str, Any],
@@ -52,15 +77,39 @@ def validate_training_configuration(
     Raises:
         ValueError: If the configured model is unsupported.
         ValueError: If the configured optimizer is unsupported.
+        ValueError: If the configured batching strategy is unsupported.
+        ValueError: If iteration or epoch counts are invalid.
+        ValueError: If mini-batch size is invalid.
     """
     model_name = str(model_config["name"])
     optimizer = str(training_config["optimizer"])
+    batching_config = get_batching_config(training_config=training_config)
+    batching_strategy = str(batching_config["strategy"])
 
     if model_name not in SUPPORTED_MODEL_NAMES:
         raise ValueError(f"Unsupported model name: {model_name}")
 
     if optimizer != SUPPORTED_OPTIMIZER:
         raise ValueError(f"Unsupported optimizer: {optimizer}")
+
+    if batching_strategy not in SUPPORTED_BATCHING_STRATEGIES:
+        raise ValueError(f"Unsupported batching strategy: {batching_strategy}")
+
+    if batching_strategy == "full_batch":
+        num_iterations = int(training_config["num_iterations"])
+
+        if num_iterations < 1:
+            raise ValueError("num_iterations must be at least 1.")
+
+    if batching_strategy == "mini_batch":
+        num_epochs = int(training_config["num_epochs"])
+        batch_size = int(batching_config["batch_size"])
+
+        if num_epochs < 1:
+            raise ValueError("num_epochs must be at least 1.")
+
+        if batch_size < 1:
+            raise ValueError("batch_size must be at least 1.")
 
 
 def _copy_parameters(
@@ -78,6 +127,58 @@ def _copy_parameters(
         parameter_name: parameter_value.copy()
         for parameter_name, parameter_value in parameters.items()
     }
+
+
+def _compute_training_objective_loss(
+    x_train: np.ndarray,
+    forward_output: dict[str, np.ndarray],
+    parameters: dict[str, np.ndarray],
+    neurons_profile: list[int],
+    lambda_coefficient: float,
+) -> float:
+    """Compute full training objective loss.
+
+    Args:
+        x_train: Training feature matrix.
+        forward_output: Forward-pass output for the training data.
+        parameters: Current model parameters.
+        neurons_profile: Quantity of neurons per layer, in order.
+        lambda_coefficient: Weight decay coefficient.
+
+    Returns:
+        Training objective loss, including L2 penalty when enabled.
+    """
+    output_layer = len(neurons_profile)
+
+    return categorical_cross_entropy(
+        y_one_hot=forward_output["Y_one_hot"],
+        y_pred=forward_output[f"A{output_layer}"],
+    ) + weight_decay_loss_term(
+        x_train=x_train,
+        lambda_coefficient=lambda_coefficient,
+        parameters=parameters,
+    )
+
+
+def _compute_validation_loss(
+    forward_output: dict[str, np.ndarray],
+    neurons_profile: list[int],
+) -> float:
+    """Compute validation categorical cross-entropy loss.
+
+    Args:
+        forward_output: Forward-pass output for the validation data.
+        neurons_profile: Quantity of neurons per layer, in order.
+
+    Returns:
+        Validation categorical cross-entropy loss.
+    """
+    output_layer = len(neurons_profile)
+
+    return categorical_cross_entropy(
+        y_one_hot=forward_output["Y_one_hot"],
+        y_pred=forward_output[f"A{output_layer}"],
+    )
 
 
 def run_initial_training_step(
@@ -119,12 +220,9 @@ def run_initial_training_step(
         neurons_profile=neurons_profile,
     )
 
-    if not bool(training_config["regularization"]["enabled"]):
-        lambda_coefficient = 0.0
-    else:
-        lambda_coefficient = float(
-            training_config["regularization"]["lambda"],
-        )
+    lambda_coefficient = _get_lambda_coefficient(
+        training_config=training_config,
+    )
 
     backward_output = run_backward_pass(
         x_train=x_train,
@@ -143,7 +241,7 @@ def run_initial_training_step(
     }
 
 
-def run_training_iterations(
+def _run_full_batch_training_iterations(
     x_train: np.ndarray,
     y_train: np.ndarray,
     model_config: dict[str, Any],
@@ -151,12 +249,7 @@ def run_training_iterations(
     x_validation: np.ndarray | None = None,
     y_validation: np.ndarray | None = None,
 ) -> TrainingIterationsOutput:
-    """Run multiple training iterations.
-
-    The model parameters are initialized once. Each iteration runs a forward
-    pass, evaluates predictions, optionally evaluates validation performance,
-    computes gradients using the training split, updates parameters, and carries
-    the updated parameters into the next iteration.
+    """Run full-batch training iterations.
 
     Args:
         x_train: Training feature matrix.
@@ -167,28 +260,11 @@ def run_training_iterations(
         y_validation: Optional validation label array.
 
     Returns:
-        Dictionary containing final parameters, final predictions, train loss
-        history, train accuracy history, validation loss history, and
-        validation accuracy history.
-
-    Raises:
-        ValueError: If num_iterations is less than 1.
-        ValueError: If only one validation array is provided.
+        Dictionary containing final parameters and metric histories.
     """
-    validate_training_configuration(
-        model_config=model_config,
-        training_config=training_config,
-    )
-
     neurons_profile = list(model_config["neurons_profile"])
     learning_rate = float(training_config["learning_rate"])
     num_iterations = int(training_config["num_iterations"])
-
-    if num_iterations < 1:
-        raise ValueError("num_iterations must be at least 1.")
-
-    if (x_validation is None) != (y_validation is None):
-        raise ValueError("x_validation and y_validation must be provided together.")
 
     parameters = initialize_weights_and_bias(
         x_train=x_train,
@@ -203,14 +279,9 @@ def run_training_iterations(
     train_predictions = np.array([])
     validation_predictions = np.array([])
 
-    output_layer = len(neurons_profile)
-
-    if not bool(training_config["regularization"]["enabled"]):
-        lambda_coefficient = 0.0
-    else:
-        lambda_coefficient = float(
-            training_config["regularization"]["lambda"],
-        )
+    lambda_coefficient = _get_lambda_coefficient(
+        training_config=training_config,
+    )
 
     for _iteration in range(num_iterations):
         train_forward_output = run_forward_pass(
@@ -238,9 +309,9 @@ def run_training_iterations(
                 ypred=validation_forward_output["predictions"],
             )
 
-            validation_loss = categorical_cross_entropy(
-                y_one_hot=validation_forward_output["Y_one_hot"],
-                y_pred=validation_forward_output[f"A{output_layer}"],
+            validation_loss = _compute_validation_loss(
+                forward_output=validation_forward_output,
+                neurons_profile=neurons_profile,
             )
 
             validation_loss_history.append(validation_loss)
@@ -273,3 +344,198 @@ def run_training_iterations(
         "validation_loss": validation_loss_history,
         "validation_accuracy": validation_accuracy_history,
     }
+
+
+def _run_mini_batch_training_iterations(
+    x_train: np.ndarray,
+    y_train: np.ndarray,
+    model_config: dict[str, Any],
+    training_config: dict[str, Any],
+    x_validation: np.ndarray | None = None,
+    y_validation: np.ndarray | None = None,
+) -> TrainingIterationsOutput:
+    """Run mini-batch training epochs.
+
+    Args:
+        x_train: Training feature matrix.
+        y_train: Training label array.
+        model_config: Model configuration section.
+        training_config: Training configuration section.
+        x_validation: Optional validation feature matrix.
+        y_validation: Optional validation label array.
+
+    Returns:
+        Dictionary containing final parameters and epoch-level metric histories.
+    """
+    neurons_profile = list(model_config["neurons_profile"])
+    learning_rate = float(training_config["learning_rate"])
+    num_epochs = int(training_config["num_epochs"])
+
+    batching_config = get_batching_config(training_config=training_config)
+    batch_size = int(batching_config["batch_size"])
+    shuffle = bool(batching_config["shuffle"])
+    random_seed = int(batching_config["random_seed"])
+
+    random_generator = np.random.default_rng(random_seed)
+
+    parameters = initialize_weights_and_bias(
+        x_train=x_train,
+        neurons_profile=neurons_profile,
+    )
+
+    train_loss_history: list[float] = []
+    train_accuracy_history: list[float] = []
+    validation_loss_history: list[float] = []
+    validation_accuracy_history: list[float] = []
+
+    train_predictions = np.array([])
+    validation_predictions = np.array([])
+
+    lambda_coefficient = _get_lambda_coefficient(
+        training_config=training_config,
+    )
+
+    for _epoch in range(num_epochs):
+        for x_batch, y_batch in iter_mini_batches(
+            x_train=x_train,
+            y_train=y_train,
+            batch_size=batch_size,
+            shuffle=shuffle,
+            random_generator=random_generator,
+        ):
+            train_batch_forward_output = run_forward_pass(
+                x_train=x_batch,
+                y_train=y_batch,
+                parameters=parameters,
+                neurons_profile=neurons_profile,
+            )
+
+            backward_output = run_backward_pass(
+                x_train=x_batch,
+                forward_pass_results=train_batch_forward_output,
+                parameters=parameters,
+                neurons_profile=neurons_profile,
+                lambda_coefficient=lambda_coefficient,
+                learning_rate=learning_rate,
+            )
+
+            parameters = backward_output["parameters"]
+
+        train_forward_output = run_forward_pass(
+            x_train=x_train,
+            y_train=y_train,
+            parameters=parameters,
+            neurons_profile=neurons_profile,
+        )
+
+        train_evaluation_output = run_evaluation(
+            y=y_train,
+            ypred=train_forward_output["predictions"],
+        )
+
+        train_loss = _compute_training_objective_loss(
+            x_train=x_train,
+            forward_output=train_forward_output,
+            parameters=parameters,
+            neurons_profile=neurons_profile,
+            lambda_coefficient=lambda_coefficient,
+        )
+
+        train_loss_history.append(train_loss)
+        train_accuracy_history.append(train_evaluation_output["accuracy"])
+        train_predictions = train_forward_output["predictions"]
+
+        if x_validation is not None and y_validation is not None:
+            validation_forward_output = run_forward_pass(
+                x_train=x_validation,
+                y_train=y_validation,
+                parameters=parameters,
+                neurons_profile=neurons_profile,
+            )
+
+            validation_evaluation_output = run_evaluation(
+                y=y_validation,
+                ypred=validation_forward_output["predictions"],
+            )
+
+            validation_loss = _compute_validation_loss(
+                forward_output=validation_forward_output,
+                neurons_profile=neurons_profile,
+            )
+
+            validation_loss_history.append(validation_loss)
+            validation_accuracy_history.append(
+                validation_evaluation_output["accuracy"],
+            )
+            validation_predictions = validation_forward_output["predictions"]
+
+    return {
+        "final_parameters": parameters,
+        "train_predictions": train_predictions,
+        "validation_predictions": validation_predictions,
+        "train_loss": train_loss_history,
+        "train_accuracy": train_accuracy_history,
+        "validation_loss": validation_loss_history,
+        "validation_accuracy": validation_accuracy_history,
+    }
+
+
+def run_training_iterations(
+    x_train: np.ndarray,
+    y_train: np.ndarray,
+    model_config: dict[str, Any],
+    training_config: dict[str, Any],
+    x_validation: np.ndarray | None = None,
+    y_validation: np.ndarray | None = None,
+) -> TrainingIterationsOutput:
+    """Run training using the configured batching strategy.
+
+    Args:
+        x_train: Training feature matrix.
+        y_train: Training label array.
+        model_config: Model configuration section.
+        training_config: Training configuration section.
+        x_validation: Optional validation feature matrix.
+        y_validation: Optional validation label array.
+
+    Returns:
+        Dictionary containing final parameters, final predictions, train loss
+        history, train accuracy history, validation loss history, and
+        validation accuracy history.
+
+    Raises:
+        ValueError: If only one validation array is provided.
+        ValueError: If the configured batching strategy is unsupported.
+    """
+    validate_training_configuration(
+        model_config=model_config,
+        training_config=training_config,
+    )
+
+    if (x_validation is None) != (y_validation is None):
+        raise ValueError("x_validation and y_validation must be provided together.")
+
+    batching_config = get_batching_config(training_config=training_config)
+    batching_strategy = str(batching_config["strategy"])
+
+    if batching_strategy == "full_batch":
+        return _run_full_batch_training_iterations(
+            x_train=x_train,
+            y_train=y_train,
+            model_config=model_config,
+            training_config=training_config,
+            x_validation=x_validation,
+            y_validation=y_validation,
+        )
+
+    if batching_strategy == "mini_batch":
+        return _run_mini_batch_training_iterations(
+            x_train=x_train,
+            y_train=y_train,
+            model_config=model_config,
+            training_config=training_config,
+            x_validation=x_validation,
+            y_validation=y_validation,
+        )
+
+    raise ValueError(f"Unsupported batching strategy: {batching_strategy}")
