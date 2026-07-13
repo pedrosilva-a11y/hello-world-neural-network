@@ -84,6 +84,24 @@ export function FilterSidebar({
       />
 
       <FilterGroup
+        title="Regularization"
+        options={getFilterOptions(experiments, "regularizationOptions")}
+        selectedValues={filters.regularizationOptions}
+        onChange={(selectedValues) =>
+          updateFilter("regularizationOptions", selectedValues)
+        }
+      />
+
+      <FilterGroup
+        title="Regularization lambda"
+        options={getFilterOptions(experiments, "regularizationLambdaKeys")}
+        selectedValues={filters.regularizationLambdaKeys}
+        onChange={(selectedValues) =>
+          updateFilter("regularizationLambdaKeys", selectedValues)
+        }
+      />
+
+      <FilterGroup
         title="Learning rate"
         options={getFilterOptions(experiments, "learningRateKeys")}
         selectedValues={filters.learningRateKeys}

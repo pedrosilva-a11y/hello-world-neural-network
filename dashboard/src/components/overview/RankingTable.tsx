@@ -29,6 +29,8 @@ function buildRankingCsvRows(experiments: NormalizedExperiment[]) {
     neurons_profile: experiment.neuronsProfileLabel,
     normalize_pixels: formatBoolean(experiment.normalizePixels),
     optimizer: experiment.optimizer,
+    regularization: experiment.regularizationLabel ?? "Unknown",
+    regularization_lambda: experiment.regularizationLambda ?? null,
     learning_rate: experiment.learningRate,
     num_iterations: experiment.numIterations,
     final_train_accuracy: experiment.finalTrainAccuracy,
@@ -76,6 +78,8 @@ export function RankingTable({ experiments }: RankingTableProps) {
               <th>Architecture</th>
               <th>Normalized</th>
               <th>Optimizer</th>
+              <th>Regularization</th>
+              <th>Lambda</th>
               <th>Learning rate</th>
               <th>Iterations</th>
               <th>Train accuracy</th>
@@ -95,6 +99,8 @@ export function RankingTable({ experiments }: RankingTableProps) {
                 <td>{experiment.neuronsProfileLabel}</td>
                 <td>{formatBoolean(experiment.normalizePixels)}</td>
                 <td>{experiment.optimizer}</td>
+                <td>{experiment.regularizationLabel ?? "Unknown"}</td>
+                <td>{formatNumber(experiment.regularizationLambda ?? null)}</td>
                 <td>{formatNumber(experiment.learningRate)}</td>
                 <td>{formatNumber(experiment.numIterations)}</td>
                 <td>{formatPercent(experiment.finalTrainAccuracy)}</td>

@@ -23,6 +23,11 @@ function createExperiment(
     learningRateKey: "unknown",
     numIterations: null,
     numIterationsKey: "unknown",
+    regularizationEnabled: null,
+    regularizationType: "unknown",
+    regularizationLambda: null,
+    regularizationLambdaKey: "unknown",
+    regularizationLabel: "Unknown",
     trainLoss: [],
     validationLoss: [],
     trainAccuracy: [],
@@ -50,6 +55,11 @@ const experiments = [
     learningRateKey: "0.1",
     numIterations: 500,
     numIterationsKey: "500",
+    regularizationEnabled: false,
+    regularizationType: "none",
+    regularizationLambda: 0,
+    regularizationLambdaKey: "0",
+    regularizationLabel: "No regularization",
   }),
   createExperiment({
     experimentName: "relu_128_normalized_lr_01_1k",
@@ -61,6 +71,11 @@ const experiments = [
     learningRateKey: "0.1",
     numIterations: 1000,
     numIterationsKey: "1000",
+    regularizationEnabled: true,
+    regularizationType: "l2",
+    regularizationLambda: 0.01,
+    regularizationLambdaKey: "0.01",
+    regularizationLabel: "L2",
   }),
   createExperiment({
     experimentName: "relu_128_128_normalized_lr_01_5k",
@@ -152,6 +167,33 @@ describe("filterExperiments", () => {
       experiments[1],
       experiments[2],
     ]);
+  });
+
+  it("filters by regularization type", () => {
+    const filters: DashboardFilters = {
+      ...emptyDashboardFilters,
+      regularizationOptions: ["l2"],
+    };
+
+    expect(filterExperiments(experiments, filters)).toEqual([experiments[1]]);
+  });
+
+  it("filters by no regularization", () => {
+    const filters: DashboardFilters = {
+      ...emptyDashboardFilters,
+      regularizationOptions: ["none"],
+    };
+
+    expect(filterExperiments(experiments, filters)).toEqual([experiments[0]]);
+  });
+
+  it("filters by regularization lambda key", () => {
+    const filters: DashboardFilters = {
+      ...emptyDashboardFilters,
+      regularizationLambdaKeys: ["0.01"],
+    };
+
+    expect(filterExperiments(experiments, filters)).toEqual([experiments[1]]);
   });
 
   it("filters by learning-rate key", () => {
@@ -315,6 +357,46 @@ describe("getFilterOptions", () => {
     ]);
   });
 
+  it("builds regularization options", () => {
+    expect(getFilterOptions(experiments, "regularizationOptions")).toEqual([
+      {
+        value: "l2",
+        label: "L2",
+        count: 1,
+      },
+      {
+        value: "none",
+        label: "No regularization",
+        count: 1,
+      },
+      {
+        value: "unknown",
+        label: "Unknown",
+        count: 2,
+      },
+    ]);
+  });
+
+  it("builds regularization-lambda options", () => {
+    expect(getFilterOptions(experiments, "regularizationLambdaKeys")).toEqual([
+      {
+        value: "0",
+        label: "0",
+        count: 1,
+      },
+      {
+        value: "0.01",
+        label: "0.01",
+        count: 1,
+      },
+      {
+        value: "unknown",
+        label: "Unknown",
+        count: 2,
+      },
+    ]);
+  });
+
   it("builds learning-rate options using formatted labels", () => {
     expect(getFilterOptions(experiments, "learningRateKeys")).toEqual([
       {
@@ -391,6 +473,8 @@ describe("hasActiveFilters", () => {
     "architectures",
     "normalizationOptions",
     "optimizers",
+    "regularizationOptions",
+    "regularizationLambdaKeys",
     "learningRateKeys",
     "iterationCountKeys",
     "experimentNames",

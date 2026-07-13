@@ -6,6 +6,8 @@ export type DashboardFilters = {
   architectures: string[];
   normalizationOptions: string[];
   optimizers: string[];
+  regularizationOptions: string[];
+  regularizationLambdaKeys: string[];
   learningRateKeys: string[];
   iterationCountKeys: string[];
   experimentNames: string[];
@@ -22,6 +24,8 @@ export const emptyDashboardFilters: DashboardFilters = {
   architectures: [],
   normalizationOptions: [],
   optimizers: [],
+  regularizationOptions: [],
+  regularizationLambdaKeys: [],
   learningRateKeys: [],
   iterationCountKeys: [],
   experimentNames: [],
@@ -47,6 +51,34 @@ function getNormalizationLabel(value: string): string {
   return "Unknown";
 }
 
+function getRegularizationKey(experiment: NormalizedExperiment): string {
+  if (experiment.regularizationEnabled === false) {
+    return "none";
+  }
+
+  if (experiment.regularizationEnabled === true) {
+    return experiment.regularizationType ?? "unknown";
+  }
+
+  return "unknown";
+}
+
+function getRegularizationLabel(value: string): string {
+  if (value === "none") {
+    return "No regularization";
+  }
+
+  if (value === "l2") {
+    return "L2";
+  }
+
+  if (value === "unknown") {
+    return "Unknown";
+  }
+
+  return value.toUpperCase();
+}
+
 function getExperimentFilterValue(
   experiment: NormalizedExperiment,
   filterKey: keyof DashboardFilters,
@@ -60,6 +92,10 @@ function getExperimentFilterValue(
       return getNormalizationKey(experiment);
     case "optimizers":
       return experiment.optimizer;
+    case "regularizationOptions":
+      return getRegularizationKey(experiment);
+    case "regularizationLambdaKeys":
+      return experiment.regularizationLambdaKey ?? "unknown";
     case "learningRateKeys":
       return experiment.learningRateKey;
     case "iterationCountKeys":
@@ -76,6 +112,10 @@ function getOptionLabel(
   switch (filterKey) {
     case "normalizationOptions":
       return getNormalizationLabel(getNormalizationKey(experiment));
+    case "regularizationOptions":
+      return getRegularizationLabel(getRegularizationKey(experiment));
+    case "regularizationLambdaKeys":
+      return formatNumber(experiment.regularizationLambda ?? null);
     case "learningRateKeys":
       return formatNumber(experiment.learningRate);
     case "iterationCountKeys":
@@ -106,6 +146,14 @@ export function filterExperiments(
         getNormalizationKey(experiment),
       ) &&
       selectedFilterAllowsValue(filters.optimizers, experiment.optimizer) &&
+      selectedFilterAllowsValue(
+        filters.regularizationOptions,
+        getRegularizationKey(experiment),
+      ) &&
+      selectedFilterAllowsValue(
+        filters.regularizationLambdaKeys,
+        experiment.regularizationLambdaKey ?? "unknown",
+      ) &&
       selectedFilterAllowsValue(filters.learningRateKeys, experiment.learningRateKey) &&
       selectedFilterAllowsValue(filters.iterationCountKeys, experiment.numIterationsKey) &&
       selectedFilterAllowsValue(filters.experimentNames, experiment.experimentName)

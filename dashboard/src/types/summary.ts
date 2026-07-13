@@ -1,3 +1,9 @@
+export type RawRegularizationConfig = {
+  enabled?: boolean;
+  type?: string;
+  lambda?: number;
+};
+
 export type RawExperimentSummary = {
   experiment_name?: string;
 
@@ -15,6 +21,7 @@ export type RawExperimentSummary = {
       learning_rate?: number;
       num_iterations?: number;
       optimizer?: string;
+      regularization?: RawRegularizationConfig;
     };
   };
 
@@ -29,6 +36,7 @@ export type RawExperimentSummary = {
     model?: {
       final_parameter_shapes?: Record<string, number[] | string>;
     };
+    regularization?: RawRegularizationConfig;
     data_shapes?: Record<string, number[] | string>;
   };
 
@@ -60,6 +68,12 @@ export type NormalizedExperiment = {
   learningRateKey: string;
   numIterations: number | null;
   numIterationsKey: string;
+
+  regularizationEnabled?: boolean | null;
+  regularizationType?: string;
+  regularizationLambda?: number | null;
+  regularizationLambdaKey?: string;
+  regularizationLabel?: string;
 
   trainLoss: number[];
   validationLoss: number[];

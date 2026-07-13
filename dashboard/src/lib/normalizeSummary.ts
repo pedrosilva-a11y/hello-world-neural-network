@@ -2,6 +2,7 @@ import type {
   ExperimentIndexItem,
   NormalizedExperiment,
   RawExperimentSummary,
+  RawRegularizationConfig,
 } from "../types/summary";
 
 function isFiniteNumber(value: unknown): value is number {
@@ -85,6 +86,62 @@ function getTrainValidationGapPercent(
   return (finalTrainAccuracy - finalValidationAccuracy) * 100;
 }
 
+function getRegularizationConfig(
+  summary: RawExperimentSummary,
+): RawRegularizationConfig | undefined {
+  return summary.metadata?.regularization ?? summary.config?.training?.regularization;
+}
+
+function getRegularizationEnabled(
+  regularizationConfig: RawRegularizationConfig | undefined,
+): boolean | null {
+  if (typeof regularizationConfig?.enabled === "boolean") {
+    return regularizationConfig.enabled;
+  }
+
+  return null;
+}
+
+function getRegularizationType(
+  regularizationConfig: RawRegularizationConfig | undefined,
+  regularizationEnabled: boolean | null,
+): string {
+  if (regularizationEnabled === false) {
+    return "none";
+  }
+
+  const regularizationType = regularizationConfig?.type?.trim();
+
+  if (regularizationType !== undefined && regularizationType.length > 0) {
+    return regularizationType;
+  }
+
+  return "unknown";
+}
+
+function getRegularizationLabel(
+  regularizationEnabled: boolean | null,
+  regularizationType: string,
+): string {
+  if (regularizationEnabled === false) {
+    return "No regularization";
+  }
+
+  if (regularizationEnabled === true) {
+    if (regularizationType === "l2") {
+      return "L2";
+    }
+
+    if (regularizationType === "unknown") {
+      return "Regularized";
+    }
+
+    return regularizationType.toUpperCase();
+  }
+
+  return "Unknown";
+}
+
 export function normalizeSummary(
   summary: RawExperimentSummary,
   indexItem?: ExperimentIndexItem,
@@ -107,6 +164,14 @@ export function normalizeSummary(
   const learningRate = toNumberOrNull(summary.config?.training?.learning_rate);
   const numIterations = toNumberOrNull(summary.config?.training?.num_iterations);
 
+  const regularizationConfig = getRegularizationConfig(summary);
+  const regularizationEnabled = getRegularizationEnabled(regularizationConfig);
+  const regularizationType = getRegularizationType(
+    regularizationConfig,
+    regularizationEnabled,
+  );
+  const regularizationLambda = toNumberOrNull(regularizationConfig?.lambda);
+
   const trainLoss = toNumberArray(summary.metrics?.train_loss);
   const validationLoss = toNumberArray(summary.metrics?.validation_loss);
   const trainAccuracy = toNumberArray(summary.metrics?.train_accuracy);
@@ -128,6 +193,15 @@ export function normalizeSummary(
     learningRateKey: formatCanonicalNumberKey(learningRate),
     numIterations,
     numIterationsKey: formatCanonicalNumberKey(numIterations),
+
+    regularizationEnabled,
+    regularizationType,
+    regularizationLambda,
+    regularizationLambdaKey: formatCanonicalNumberKey(regularizationLambda),
+    regularizationLabel: getRegularizationLabel(
+      regularizationEnabled,
+      regularizationType,
+    ),
 
     trainLoss,
     validationLoss,
