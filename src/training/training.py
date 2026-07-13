@@ -72,6 +72,25 @@ def _get_lambda_coefficient(
     return float(regularization_config["lambda"])
 
 
+def _get_initialization_random_seed(
+    training_config: dict[str, Any],
+) -> int | None:
+    """Get the optional parameter-initialization random seed.
+
+    Args:
+        training_config: Training configuration section.
+
+    Returns:
+        Integer initialization seed, or None when unconfigured.
+    """
+    random_seed = training_config.get("initialization_random_seed")
+
+    if random_seed is None:
+        return None
+
+    return int(random_seed)
+
+
 def validate_training_configuration(
     model_config: dict[str, Any],
     training_config: dict[str, Any],
@@ -215,9 +234,14 @@ def run_initial_training_step(
     neurons_profile = list(model_config["neurons_profile"])
     learning_rate = float(training_config["learning_rate"])
 
+    initialization_random_seed = _get_initialization_random_seed(
+        training_config=training_config,
+    )
+
     parameters = initialize_weights_and_bias(
         x_train=x_train,
         neurons_profile=neurons_profile,
+        random_seed=initialization_random_seed,
     )
     initial_parameters = _copy_parameters(parameters)
 
@@ -275,9 +299,14 @@ def _run_full_batch_training_iterations(
     learning_rate = float(training_config["learning_rate"])
     num_iterations = int(training_config["num_iterations"])
 
+    initialization_random_seed = _get_initialization_random_seed(
+        training_config=training_config,
+    )
+
     parameters = initialize_weights_and_bias(
         x_train=x_train,
         neurons_profile=neurons_profile,
+        random_seed=initialization_random_seed,
     )
 
     train_loss_history: list[float] = []
@@ -422,9 +451,14 @@ def _run_mini_batch_training_iterations(
 
     random_generator = np.random.default_rng(random_seed)
 
+    initialization_random_seed = _get_initialization_random_seed(
+        training_config=training_config,
+    )
+
     parameters = initialize_weights_and_bias(
         x_train=x_train,
         neurons_profile=neurons_profile,
+        random_seed=initialization_random_seed,
     )
 
     train_loss_history: list[float] = []

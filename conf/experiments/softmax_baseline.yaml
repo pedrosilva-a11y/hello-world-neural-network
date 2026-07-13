@@ -19,6 +19,7 @@ model:
 training:
   optimizer: batch_gradient_descent
   learning_rate: 1.0e-05
+  initialization_random_seed: 42
   num_iterations: 10000
   batching:
     strategy: full_batch

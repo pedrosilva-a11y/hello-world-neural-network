@@ -12,6 +12,7 @@ def _training_config(
     num_iterations: int = 1,
     learning_rate: float = 0.1,
     optimizer: str = "batch_gradient_descent",
+    initialization_random_seed: int | None = None,
     regularization_enabled: bool = False,
     regularization_type: str = "none",
     lambda_coefficient: float = 0.0,
@@ -25,6 +26,7 @@ def _training_config(
     config = {
         "optimizer": optimizer,
         "learning_rate": learning_rate,
+        "initialization_random_seed": initialization_random_seed,
         "regularization": {
             "enabled": regularization_enabled,
             "type": regularization_type,
@@ -168,6 +170,7 @@ class TestRunInitialTrainingStep(unittest.TestCase):
         mock_initialize_weights_and_bias.assert_called_once_with(
             x_train=x_train,
             neurons_profile=[2],
+            random_seed=None,
         )
         mock_run_forward_pass.assert_called_once_with(
             x_train=x_train,
@@ -356,6 +359,7 @@ class TestRunTrainingIterations(unittest.TestCase):
         mock_initialize_weights_and_bias.assert_called_once_with(
             x_train=x_train,
             neurons_profile=[2],
+            random_seed=None,
         )
         self.assertEqual(mock_run_forward_pass.call_count, 2)
         self.assertEqual(mock_run_evaluation.call_count, 2)
@@ -610,6 +614,7 @@ class TestRunTrainingIterations(unittest.TestCase):
         mock_initialize_weights_and_bias.assert_called_once_with(
             x_train=x_train,
             neurons_profile=[2],
+            random_seed=None,
         )
         self.assertEqual(mock_run_forward_pass.call_count, 4)
         self.assertEqual(mock_run_evaluation.call_count, 4)
@@ -1036,6 +1041,7 @@ class TestRunTrainingIterations(unittest.TestCase):
         mock_initialize_weights_and_bias.assert_called_once_with(
             x_train=x_train,
             neurons_profile=[2],
+            random_seed=None,
         )
         self.assertEqual(mock_run_forward_pass.call_count, 8)
         self.assertEqual(mock_run_backward_pass.call_count, 4)
@@ -1515,6 +1521,7 @@ class TestRunTrainingIterations(unittest.TestCase):
         mock_initialize_weights_and_bias.assert_called_once_with(
             x_train=x_train,
             neurons_profile=[3, 2],
+            random_seed=None,
         )
         mock_run_forward_pass.assert_called_once_with(
             x_train=x_train,
@@ -1620,6 +1627,7 @@ class TestRunTrainingIterations(unittest.TestCase):
         mock_initialize_weights_and_bias.assert_called_once_with(
             x_train=x_train,
             neurons_profile=[3, 3, 2],
+            random_seed=None,
         )
         mock_run_forward_pass.assert_called_once_with(
             x_train=x_train,
@@ -1666,6 +1674,87 @@ class TestRunTrainingIterations(unittest.TestCase):
                 model_config=model_config,
                 training_config=training_config,
             )
+
+    def test_run_training_iterations_passes_initialization_random_seed_to_initializer(
+        self,
+    ) -> None:
+        """Pass configured initialization seed to parameter initialization."""
+        model_config = {
+            "name": "single_layer_softmax_classifier",
+            "input_size": 2,
+            "neurons_profile": [2],
+        }
+        training_config = _training_config(
+            initialization_random_seed=123,
+        )
+
+        x_train = np.array(
+            [
+                [1.0, 2.0],
+                [3.0, 4.0],
+            ],
+        )
+        y_train = np.array([1, 0])
+
+        parameters = {
+            "W1": np.zeros((2, 2)),
+            "b1": np.zeros((1, 2)),
+        }
+
+        with (
+            patch.object(
+                training,
+                "initialize_weights_and_bias",
+                return_value=parameters,
+            ) as mock_initialize_weights_and_bias,
+            patch.object(
+                training,
+                "run_forward_pass",
+                return_value={
+                    "Z1": np.zeros((2, 2)),
+                    "A1": np.array([[0.4, 0.6], [0.7, 0.3]]),
+                    "predictions": np.array([1, 0]),
+                    "Y_one_hot": np.array([[0.0, 1.0], [1.0, 0.0]]),
+                },
+            ),
+            patch.object(
+                training,
+                "run_evaluation",
+                return_value={"accuracy": 1.0},
+            ),
+            patch.object(
+                training,
+                "run_backward_pass",
+                return_value={
+                    "loss": 0.5,
+                    "gradients": {},
+                    "parameters": parameters,
+                },
+            ),
+        ):
+            training.run_training_iterations(
+                x_train=x_train,
+                y_train=y_train,
+                model_config=model_config,
+                training_config=training_config,
+            )
+
+        mock_initialize_weights_and_bias.assert_called_once_with(
+            x_train=x_train,
+            neurons_profile=[2],
+            random_seed=123,
+        )
+
+    def test_get_initialization_random_seed_returns_none_when_missing(self) -> None:
+        """Return None when initialization seed is not configured."""
+        training_config = _training_config()
+        training_config.pop("initialization_random_seed")
+
+        result = training._get_initialization_random_seed(
+            training_config=training_config,
+        )
+
+        self.assertIsNone(result)
 
 
 if __name__ == "__main__":

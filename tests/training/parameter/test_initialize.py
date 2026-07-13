@@ -2,7 +2,7 @@
 
 import math
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 import numpy as np
 
@@ -28,6 +28,7 @@ class TestInitializeWeightsAndBias(unittest.TestCase):
         result = initialize.initialize_weights_and_bias(
             x_train=self.x_train,
             neurons_profile=[2],
+            random_seed=42,
         )
 
         self.assertEqual(set(result.keys()), {"W1", "b1"})
@@ -39,6 +40,7 @@ class TestInitializeWeightsAndBias(unittest.TestCase):
         result = initialize.initialize_weights_and_bias(
             x_train=self.x_train,
             neurons_profile=[2],
+            random_seed=42,
         )
 
         self.assertEqual(result["W1"].shape, (3, 2))
@@ -51,6 +53,7 @@ class TestInitializeWeightsAndBias(unittest.TestCase):
         result = initialize.initialize_weights_and_bias(
             x_train=self.x_train,
             neurons_profile=[2],
+            random_seed=42,
         )
 
         expected_bias = np.array([[0.0, 0.0]])
@@ -60,7 +63,7 @@ class TestInitializeWeightsAndBias(unittest.TestCase):
     def test_initialize_weights_and_bias_scales_random_weights_with_he_initialization(
         self,
     ) -> None:
-        """Scale random W1 values using He initialization based on input size."""
+        """Scale standard-normal W1 values using He initialization."""
         random_values = np.array(
             [
                 [1.0, -1.0],
@@ -68,12 +71,41 @@ class TestInitializeWeightsAndBias(unittest.TestCase):
                 [3.0, -3.0],
             ],
         )
+        mock_random_generator = Mock()
+        mock_random_generator.standard_normal.return_value = random_values
 
         with patch.object(
             initialize.np.random,
-            "randn",
-            return_value=random_values,
-        ) as mock_randn:
+            "default_rng",
+            return_value=mock_random_generator,
+        ) as mock_default_rng:
+            result = initialize.initialize_weights_and_bias(
+                x_train=self.x_train,
+                neurons_profile=[2],
+                random_seed=123,
+            )
+
+        expected_weights = random_values * math.sqrt(2 / 3)
+
+        np.testing.assert_allclose(result["W1"], expected_weights)
+        mock_default_rng.assert_called_once_with(123)
+        mock_random_generator.standard_normal.assert_called_once_with(
+            size=(3, 2),
+        )
+
+    def test_initialize_weights_and_bias_uses_none_seed_when_seed_is_not_provided(
+        self,
+    ) -> None:
+        """Create a default random generator when random_seed is omitted."""
+        random_values = np.ones((3, 2))
+        mock_random_generator = Mock()
+        mock_random_generator.standard_normal.return_value = random_values
+
+        with patch.object(
+            initialize.np.random,
+            "default_rng",
+            return_value=mock_random_generator,
+        ) as mock_default_rng:
             result = initialize.initialize_weights_and_bias(
                 x_train=self.x_train,
                 neurons_profile=[2],
@@ -82,7 +114,48 @@ class TestInitializeWeightsAndBias(unittest.TestCase):
         expected_weights = random_values * math.sqrt(2 / 3)
 
         np.testing.assert_allclose(result["W1"], expected_weights)
-        mock_randn.assert_called_once_with(3, 2)
+        mock_default_rng.assert_called_once_with(None)
+        mock_random_generator.standard_normal.assert_called_once_with(
+            size=(3, 2),
+        )
+
+    def test_initialize_weights_and_bias_returns_reproducible_weights_with_same_seed(
+        self,
+    ) -> None:
+        """Return identical weight matrices when using the same seed."""
+        first_result = initialize.initialize_weights_and_bias(
+            x_train=self.x_train,
+            neurons_profile=[4, 2],
+            random_seed=42,
+        )
+        second_result = initialize.initialize_weights_and_bias(
+            x_train=self.x_train,
+            neurons_profile=[4, 2],
+            random_seed=42,
+        )
+
+        np.testing.assert_array_equal(first_result["W1"], second_result["W1"])
+        np.testing.assert_array_equal(first_result["W2"], second_result["W2"])
+        np.testing.assert_array_equal(first_result["b1"], second_result["b1"])
+        np.testing.assert_array_equal(first_result["b2"], second_result["b2"])
+
+    def test_initialize_weights_and_bias_returns_different_weights_with_different_seeds(
+        self,
+    ) -> None:
+        """Return different weight matrices when using different seeds."""
+        first_result = initialize.initialize_weights_and_bias(
+            x_train=self.x_train,
+            neurons_profile=[4, 2],
+            random_seed=42,
+        )
+        second_result = initialize.initialize_weights_and_bias(
+            x_train=self.x_train,
+            neurons_profile=[4, 2],
+            random_seed=123,
+        )
+
+        self.assertFalse(np.array_equal(first_result["W1"], second_result["W1"]))
+        self.assertFalse(np.array_equal(first_result["W2"], second_result["W2"]))
 
     def test_initialize_weights_and_bias_returns_expected_parameter_keys_for_two_layers(
         self,
@@ -91,6 +164,7 @@ class TestInitializeWeightsAndBias(unittest.TestCase):
         result = initialize.initialize_weights_and_bias(
             x_train=self.x_train,
             neurons_profile=[4, 2],
+            random_seed=42,
         )
 
         self.assertEqual(set(result.keys()), {"W1", "b1", "W2", "b2"})
@@ -102,6 +176,7 @@ class TestInitializeWeightsAndBias(unittest.TestCase):
         result = initialize.initialize_weights_and_bias(
             x_train=self.x_train,
             neurons_profile=[4, 2],
+            random_seed=42,
         )
 
         self.assertEqual(result["W1"].shape, (3, 4))
@@ -117,6 +192,7 @@ class TestInitializeWeightsAndBias(unittest.TestCase):
         result = initialize.initialize_weights_and_bias(
             x_train=self.x_train,
             neurons_profile=[4, 2],
+            random_seed=42,
         )
 
         expected_b1 = np.zeros((1, 4))
@@ -132,6 +208,7 @@ class TestInitializeWeightsAndBias(unittest.TestCase):
         result = initialize.initialize_weights_and_bias(
             x_train=self.x_train,
             neurons_profile=[4, 3, 2],
+            random_seed=42,
         )
 
         self.assertEqual(result["W1"].shape, (3, 4))
@@ -142,6 +219,39 @@ class TestInitializeWeightsAndBias(unittest.TestCase):
 
         self.assertEqual(result["W3"].shape, (3, 2))
         self.assertEqual(result["b3"].shape, (1, 2))
+
+    def test_initialize_weights_and_bias_calls_random_generator_once_per_weight_matrix(
+        self,
+    ) -> None:
+        """Create one random weight matrix per layer."""
+        mock_random_generator = Mock()
+        mock_random_generator.standard_normal.side_effect = [
+            np.ones((3, 4)),
+            np.ones((4, 3)),
+            np.ones((3, 2)),
+        ]
+
+        with patch.object(
+            initialize.np.random,
+            "default_rng",
+            return_value=mock_random_generator,
+        ):
+            initialize.initialize_weights_and_bias(
+                x_train=self.x_train,
+                neurons_profile=[4, 3, 2],
+                random_seed=42,
+            )
+
+        expected_calls = [
+            unittest.mock.call(size=(3, 4)),
+            unittest.mock.call(size=(4, 3)),
+            unittest.mock.call(size=(3, 2)),
+        ]
+
+        self.assertEqual(
+            mock_random_generator.standard_normal.call_args_list,
+            expected_calls,
+        )
 
     def test_initialize_weights_and_bias_raises_error_when_neurons_profile_is_empty(
         self,
@@ -154,6 +264,7 @@ class TestInitializeWeightsAndBias(unittest.TestCase):
             initialize.initialize_weights_and_bias(
                 x_train=self.x_train,
                 neurons_profile=[],
+                random_seed=42,
             )
 
 

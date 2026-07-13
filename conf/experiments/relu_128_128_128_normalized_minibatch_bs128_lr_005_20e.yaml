@@ -22,6 +22,7 @@ model:
 training:
   optimizer: batch_gradient_descent
   learning_rate: 0.05
+  initialization_random_seed: 42
   num_epochs: 20
   batching:
     strategy: mini_batch

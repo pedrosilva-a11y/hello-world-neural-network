@@ -217,6 +217,13 @@ def main() -> None:
                 "best_iteration": training_output["best_iteration"],
                 "best_epoch": training_output["best_epoch"],
             },
+            "randomness": {
+                "data_split_random_seed": data_splitting_config["random_seed"],
+                "initialization_random_seed": training_config.get(
+                    "initialization_random_seed",
+                ),
+                "batching_random_seed": training_config["batching"]["random_seed"],
+            },
             "data_shapes": {
                 "full_train": list(x_full_train_matrix.shape),
                 "train": list(x_train_matrix.shape),
