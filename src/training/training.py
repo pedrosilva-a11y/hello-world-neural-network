@@ -239,6 +239,7 @@ def run_initial_training_step(
         neurons_profile=neurons_profile,
         lambda_coefficient=lambda_coefficient,
         learning_rate=learning_rate,
+        regularization_sample_count=x_train.shape[0],
     )
 
     return {
@@ -345,6 +346,7 @@ def _run_full_batch_training_iterations(
             neurons_profile=neurons_profile,
             lambda_coefficient=lambda_coefficient,
             learning_rate=learning_rate,
+            regularization_sample_count=x_train.shape[0],
         )
 
         train_loss = backward_output["loss"]
@@ -444,6 +446,8 @@ def _run_mini_batch_training_iterations(
         training_config=training_config,
     )
 
+    regularization_sample_count = x_train.shape[0]
+
     for epoch_index in range(num_epochs):
         for x_batch, y_batch in iter_mini_batches(
             x_train=x_train,
@@ -466,6 +470,7 @@ def _run_mini_batch_training_iterations(
                 neurons_profile=neurons_profile,
                 lambda_coefficient=lambda_coefficient,
                 learning_rate=learning_rate,
+                regularization_sample_count=regularization_sample_count,
             )
 
             parameters = backward_output["parameters"]

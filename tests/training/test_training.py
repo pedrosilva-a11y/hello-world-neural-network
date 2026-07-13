@@ -182,6 +182,7 @@ class TestRunInitialTrainingStep(unittest.TestCase):
             neurons_profile=[2],
             lambda_coefficient=0.2,
             learning_rate=0.1,
+            regularization_sample_count=x_train.shape[0],
         )
 
 
@@ -380,6 +381,15 @@ class TestRunTrainingIterations(unittest.TestCase):
 
         self.assertEqual(first_backward_call["lambda_coefficient"], 0.25)
         self.assertEqual(second_backward_call["lambda_coefficient"], 0.25)
+
+        self.assertEqual(
+            first_backward_call["regularization_sample_count"],
+            x_train.shape[0],
+        )
+        self.assertEqual(
+            second_backward_call["regularization_sample_count"],
+            x_train.shape[0],
+        )
 
     def test_run_training_iterations_tracks_validation_metrics(self) -> None:
         """Run validation loss and accuracy during each full-batch iteration."""
@@ -662,6 +672,15 @@ class TestRunTrainingIterations(unittest.TestCase):
 
         self.assertEqual(first_backward_call["lambda_coefficient"], 0.0)
         self.assertEqual(second_backward_call["lambda_coefficient"], 0.0)
+
+        self.assertEqual(
+            first_backward_call["regularization_sample_count"],
+            x_train.shape[0],
+        )
+        self.assertEqual(
+            second_backward_call["regularization_sample_count"],
+            x_train.shape[0],
+        )
 
     def test_run_training_iterations_keeps_earlier_best_full_batch_checkpoint(
         self,
@@ -1039,6 +1058,208 @@ class TestRunTrainingIterations(unittest.TestCase):
         self.assertEqual(third_backward_call["lambda_coefficient"], 0.3)
         self.assertEqual(fourth_backward_call["lambda_coefficient"], 0.3)
 
+        self.assertEqual(
+            first_backward_call["regularization_sample_count"],
+            x_train.shape[0],
+        )
+        self.assertEqual(
+            second_backward_call["regularization_sample_count"],
+            x_train.shape[0],
+        )
+        self.assertEqual(
+            third_backward_call["regularization_sample_count"],
+            x_train.shape[0],
+        )
+        self.assertEqual(
+            fourth_backward_call["regularization_sample_count"],
+            x_train.shape[0],
+        )
+
+        self.assertNotEqual(
+            first_backward_call["regularization_sample_count"],
+            first_backward_call["x_train"].shape[0],
+        )
+        self.assertNotEqual(
+            second_backward_call["regularization_sample_count"],
+            second_backward_call["x_train"].shape[0],
+        )
+        self.assertNotEqual(
+            third_backward_call["regularization_sample_count"],
+            third_backward_call["x_train"].shape[0],
+        )
+        self.assertNotEqual(
+            fourth_backward_call["regularization_sample_count"],
+            fourth_backward_call["x_train"].shape[0],
+        )
+
+    def test_run_training_iterations_passes_full_train_count_to_mini_batch_backward_pass(
+        self,
+    ) -> None:
+        """Use full training size for mini-batch L2 scaling."""
+        model_config = {
+            "name": "single_layer_softmax_classifier",
+            "input_size": 2,
+            "neurons_profile": [2],
+        }
+        training_config = _training_config(
+            batching_strategy="mini_batch",
+            batch_size=2,
+            shuffle=False,
+            num_epochs=1,
+            regularization_enabled=True,
+            regularization_type="l2",
+            lambda_coefficient=0.3,
+        )
+
+        x_train = np.array(
+            [
+                [1.0, 0.0],
+                [0.0, 1.0],
+                [1.0, 1.0],
+                [0.5, 0.5],
+            ],
+        )
+        y_train = np.array([0, 1, 1, 0])
+
+        initial_parameters = {
+            "W1": np.array(
+                [
+                    [0.1, 0.2],
+                    [0.3, 0.4],
+                ],
+            ),
+            "b1": np.array([[0.0, 0.0]]),
+        }
+        updated_parameters_batch_1 = {
+            "W1": np.array([[0.11, 0.19], [0.31, 0.39]]),
+            "b1": np.array([[0.01, -0.01]]),
+        }
+        updated_parameters_batch_2 = {
+            "W1": np.array([[0.12, 0.18], [0.32, 0.38]]),
+            "b1": np.array([[0.02, -0.02]]),
+        }
+
+        batch_forward_1 = {
+            "Z1": np.zeros((2, 2)),
+            "A1": np.array([[0.9, 0.1], [0.2, 0.8]]),
+            "predictions": np.array([0, 1]),
+            "Y_one_hot": np.array([[1.0, 0.0], [0.0, 1.0]]),
+        }
+        batch_forward_2 = {
+            "Z1": np.zeros((2, 2)),
+            "A1": np.array([[0.3, 0.7], [0.6, 0.4]]),
+            "predictions": np.array([1, 0]),
+            "Y_one_hot": np.array([[0.0, 1.0], [1.0, 0.0]]),
+        }
+        train_forward_epoch = {
+            "Z1": np.zeros((4, 2)),
+            "A1": np.array(
+                [
+                    [0.8, 0.2],
+                    [0.1, 0.9],
+                    [0.3, 0.7],
+                    [0.6, 0.4],
+                ],
+            ),
+            "predictions": np.array([0, 1, 1, 0]),
+            "Y_one_hot": np.zeros((4, 2)),
+        }
+
+        with (
+            patch.object(
+                training,
+                "initialize_weights_and_bias",
+                return_value=initial_parameters,
+            ),
+            patch.object(
+                training,
+                "run_forward_pass",
+                side_effect=[
+                    batch_forward_1,
+                    batch_forward_2,
+                    train_forward_epoch,
+                ],
+            ),
+            patch.object(
+                training,
+                "run_backward_pass",
+                side_effect=[
+                    {
+                        "loss": 1.1,
+                        "gradients": {},
+                        "parameters": updated_parameters_batch_1,
+                    },
+                    {
+                        "loss": 1.0,
+                        "gradients": {},
+                        "parameters": updated_parameters_batch_2,
+                    },
+                ],
+            ) as mock_run_backward_pass,
+            patch.object(
+                training,
+                "run_evaluation",
+                return_value={"accuracy": 1.0},
+            ),
+            patch.object(
+                training,
+                "categorical_cross_entropy",
+                return_value=0.4,
+            ),
+            patch.object(
+                training,
+                "weight_decay_loss_term",
+                return_value=0.1,
+            ) as mock_weight_decay_loss_term,
+        ):
+            result = training.run_training_iterations(
+                x_train=x_train,
+                y_train=y_train,
+                model_config=model_config,
+                training_config=training_config,
+            )
+
+        self.assertIs(result["final_parameters"], updated_parameters_batch_2)
+        self.assertEqual(result["train_loss"], [0.5])
+        self.assertEqual(result["train_accuracy"], [1.0])
+
+        self.assertEqual(mock_run_backward_pass.call_count, 2)
+
+        first_backward_call = mock_run_backward_pass.call_args_list[0].kwargs
+        second_backward_call = mock_run_backward_pass.call_args_list[1].kwargs
+
+        np.testing.assert_array_equal(first_backward_call["x_train"], x_train[:2])
+        np.testing.assert_array_equal(second_backward_call["x_train"], x_train[2:])
+
+        self.assertEqual(first_backward_call["lambda_coefficient"], 0.3)
+        self.assertEqual(second_backward_call["lambda_coefficient"], 0.3)
+
+        self.assertEqual(
+            first_backward_call["regularization_sample_count"],
+            x_train.shape[0],
+        )
+        self.assertEqual(
+            second_backward_call["regularization_sample_count"],
+            x_train.shape[0],
+        )
+
+        self.assertNotEqual(
+            first_backward_call["regularization_sample_count"],
+            first_backward_call["x_train"].shape[0],
+        )
+        self.assertNotEqual(
+            second_backward_call["regularization_sample_count"],
+            second_backward_call["x_train"].shape[0],
+        )
+
+        weight_decay_loss_kwargs = mock_weight_decay_loss_term.call_args.kwargs
+        self.assertIs(weight_decay_loss_kwargs["x_train"], x_train)
+        self.assertEqual(weight_decay_loss_kwargs["lambda_coefficient"], 0.3)
+        self.assertIs(
+            weight_decay_loss_kwargs["parameters"],
+            updated_parameters_batch_2,
+        )
+
     def test_run_training_iterations_raises_error_for_invalid_iterations(self) -> None:
         """Raise ValueError when num_iterations is less than one."""
         model_config = {
@@ -1308,6 +1529,7 @@ class TestRunTrainingIterations(unittest.TestCase):
             neurons_profile=[3, 2],
             lambda_coefficient=0.0,
             learning_rate=0.1,
+            regularization_sample_count=x_train.shape[0],
         )
 
     def test_run_training_iterations_accepts_multi_layer_relu_model(self) -> None:
@@ -1412,6 +1634,7 @@ class TestRunTrainingIterations(unittest.TestCase):
             neurons_profile=[3, 3, 2],
             lambda_coefficient=0.0,
             learning_rate=0.1,
+            regularization_sample_count=x_train.shape[0],
         )
 
     def test_run_training_iterations_raises_error_for_unsupported_optimizer(

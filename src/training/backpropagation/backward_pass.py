@@ -23,6 +23,7 @@ def run_backward_pass(
     neurons_profile: list[int],
     lambda_coefficient: float,
     learning_rate: float = 1e-5,
+    regularization_sample_count: int | None = None,
 ) -> dict[str, Any]:
     """Run loss, gradient, and parameter-update computations.
 
@@ -34,6 +35,8 @@ def run_backward_pass(
         neurons_profile: Quantity of neurons per layer, in order.
         lambda_coefficient: Weight decay coefficient.
         learning_rate: Step size used to update the parameters.
+        regularization_sample_count: Optional explicit sample count used to scale
+            L2 regularization. Defaults to x_train.shape[0].
 
     Returns:
         Dictionary containing loss, gradients, and updated parameters.
@@ -48,6 +51,7 @@ def run_backward_pass(
         x_train=x_train,
         lambda_coefficient=lambda_coefficient,
         parameters=parameters,
+        regularization_sample_count=regularization_sample_count,
     )
 
     gradients: dict[str, np.ndarray] = {}
@@ -75,6 +79,7 @@ def run_backward_pass(
         gradients=gradients,
         parameters=parameters,
         layers=layers,
+        regularization_sample_count=regularization_sample_count,
     )
 
     for i in range(layers):
