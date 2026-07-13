@@ -1,6 +1,7 @@
 import type {
   ExperimentIndexItem,
   NormalizedExperiment,
+  RawBatchingConfig,
   RawExperimentSummary,
   RawRegularizationConfig,
 } from "../types/summary";
@@ -142,6 +143,46 @@ function getRegularizationLabel(
   return "Unknown";
 }
 
+function getBatchingConfig(
+  summary: RawExperimentSummary,
+): RawBatchingConfig | undefined {
+  return summary.metadata?.batching ?? summary.config?.training?.batching;
+}
+
+function getBatchingStrategy(
+  batchingConfig: RawBatchingConfig | undefined,
+): string {
+  const batchingStrategy = batchingConfig?.strategy?.trim();
+
+  if (batchingStrategy !== undefined && batchingStrategy.length > 0) {
+    return batchingStrategy;
+  }
+
+  return "full_batch";
+}
+
+function getBatchingLabel(batchingStrategy: string): string {
+  if (batchingStrategy === "full_batch") {
+    return "Full batch";
+  }
+
+  if (batchingStrategy === "mini_batch") {
+    return "Mini-batch";
+  }
+
+  return batchingStrategy;
+}
+
+function getShuffleBatches(
+  batchingConfig: RawBatchingConfig | undefined,
+): boolean | null {
+  if (typeof batchingConfig?.shuffle === "boolean") {
+    return batchingConfig.shuffle;
+  }
+
+  return null;
+}
+
 export function normalizeSummary(
   summary: RawExperimentSummary,
   indexItem?: ExperimentIndexItem,
@@ -163,6 +204,13 @@ export function normalizeSummary(
 
   const learningRate = toNumberOrNull(summary.config?.training?.learning_rate);
   const numIterations = toNumberOrNull(summary.config?.training?.num_iterations);
+  const numEpochs = toNumberOrNull(summary.config?.training?.num_epochs);
+
+  const batchingConfig = getBatchingConfig(summary);
+  const batchingStrategy = getBatchingStrategy(batchingConfig);
+  const batchSize = toNumberOrNull(batchingConfig?.batch_size);
+  const shuffleBatches = getShuffleBatches(batchingConfig);
+  const batchRandomSeed = toNumberOrNull(batchingConfig?.random_seed);
 
   const regularizationConfig = getRegularizationConfig(summary);
   const regularizationEnabled = getRegularizationEnabled(regularizationConfig);
@@ -193,6 +241,15 @@ export function normalizeSummary(
     learningRateKey: formatCanonicalNumberKey(learningRate),
     numIterations,
     numIterationsKey: formatCanonicalNumberKey(numIterations),
+
+    batchingStrategy,
+    batchingLabel: getBatchingLabel(batchingStrategy),
+    batchSize,
+    batchSizeKey: formatCanonicalNumberKey(batchSize),
+    shuffleBatches,
+    batchRandomSeed,
+    numEpochs,
+    numEpochsKey: formatCanonicalNumberKey(numEpochs),
 
     regularizationEnabled,
     regularizationType,

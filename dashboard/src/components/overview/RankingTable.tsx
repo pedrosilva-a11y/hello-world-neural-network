@@ -29,6 +29,10 @@ function buildRankingCsvRows(experiments: NormalizedExperiment[]) {
     neurons_profile: experiment.neuronsProfileLabel,
     normalize_pixels: formatBoolean(experiment.normalizePixels),
     optimizer: experiment.optimizer,
+    batching_strategy: experiment.batchingLabel,
+    batch_size: experiment.batchSize,
+    num_epochs: experiment.numEpochs,
+    shuffle_batches: formatBoolean(experiment.shuffleBatches),
     regularization: experiment.regularizationLabel ?? "Unknown",
     regularization_lambda: experiment.regularizationLambda ?? null,
     learning_rate: experiment.learningRate,
@@ -78,6 +82,10 @@ export function RankingTable({ experiments }: RankingTableProps) {
               <th>Architecture</th>
               <th>Normalized</th>
               <th>Optimizer</th>
+              <th>Batching</th>
+              <th>Batch size</th>
+              <th>Epochs</th>
+              <th>Shuffle</th>
               <th>Regularization</th>
               <th>Lambda</th>
               <th>Learning rate</th>
@@ -99,6 +107,10 @@ export function RankingTable({ experiments }: RankingTableProps) {
                 <td>{experiment.neuronsProfileLabel}</td>
                 <td>{formatBoolean(experiment.normalizePixels)}</td>
                 <td>{experiment.optimizer}</td>
+                <td>{experiment.batchingLabel}</td>
+                <td>{formatNumber(experiment.batchSize)}</td>
+                <td>{formatNumber(experiment.numEpochs)}</td>
+                <td>{formatBoolean(experiment.shuffleBatches)}</td>
                 <td>{experiment.regularizationLabel ?? "Unknown"}</td>
                 <td>{formatNumber(experiment.regularizationLambda ?? null)}</td>
                 <td>{formatNumber(experiment.learningRate)}</td>

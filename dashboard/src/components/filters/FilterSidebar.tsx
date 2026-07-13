@@ -84,6 +84,28 @@ export function FilterSidebar({
       />
 
       <FilterGroup
+        title="Batching"
+        options={getFilterOptions(experiments, "batchingStrategies")}
+        selectedValues={filters.batchingStrategies}
+        onChange={(selectedValues) =>
+          updateFilter("batchingStrategies", selectedValues)
+        }
+      />
+
+      <FilterGroup
+        title="Batch size"
+        options={getFilterOptions(experiments, "batchSizeKeys")}
+        selectedValues={filters.batchSizeKeys}
+        onChange={(selectedValues) => updateFilter("batchSizeKeys", selectedValues)}
+      />
+
+      <FilterGroup
+        title="Epochs"
+        options={getFilterOptions(experiments, "epochCountKeys")}
+        selectedValues={filters.epochCountKeys}
+        onChange={(selectedValues) => updateFilter("epochCountKeys", selectedValues)}
+      />
+      <FilterGroup
         title="Regularization"
         options={getFilterOptions(experiments, "regularizationOptions")}
         selectedValues={filters.regularizationOptions}

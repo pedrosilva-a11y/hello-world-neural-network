@@ -20,6 +20,16 @@ function createExperiment(
     learningRateKey: "unknown",
     numIterations: null,
     numIterationsKey: "unknown",
+
+    batchingStrategy: "full_batch",
+    batchingLabel: "Full batch",
+    batchSize: null,
+    batchSizeKey: "unknown",
+    shuffleBatches: false,
+    batchRandomSeed: 42,
+    numEpochs: null,
+    numEpochsKey: "unknown",
+
     trainLoss: [],
     validationLoss: [],
     trainAccuracy: [],
@@ -87,6 +97,64 @@ describe("getComparisonChartPoints", () => {
     expect(points.map((point) => point.experimentName)).toEqual([
       "lower_loss",
       "higher_loss",
+    ]);
+  });
+
+  it("sorts validation error ascending", () => {
+    const points = getComparisonChartPoints(
+      [
+        createExperiment({
+          experimentName: "higher_error",
+          validationErrorPercent: 5,
+        }),
+        createExperiment({
+          experimentName: "lower_error",
+          validationErrorPercent: 2,
+        }),
+      ],
+      "validationErrorPercent",
+    );
+
+    expect(points).toEqual([
+      {
+        experimentName: "lower_error",
+        value: 2,
+        formattedValue: "2.00%",
+      },
+      {
+        experimentName: "higher_error",
+        value: 5,
+        formattedValue: "5.00%",
+      },
+    ]);
+  });
+
+  it("sorts train-validation gap descending", () => {
+    const points = getComparisonChartPoints(
+      [
+        createExperiment({
+          experimentName: "small_gap",
+          trainValidationGapPercent: 1.5,
+        }),
+        createExperiment({
+          experimentName: "large_gap",
+          trainValidationGapPercent: 4.25,
+        }),
+      ],
+      "trainValidationGapPercent",
+    );
+
+    expect(points).toEqual([
+      {
+        experimentName: "large_gap",
+        value: 4.25,
+        formattedValue: "4.25 pp",
+      },
+      {
+        experimentName: "small_gap",
+        value: 1.5,
+        formattedValue: "1.50 pp",
+      },
     ]);
   });
 

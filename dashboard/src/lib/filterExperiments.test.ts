@@ -23,6 +23,14 @@ function createExperiment(
     learningRateKey: "unknown",
     numIterations: null,
     numIterationsKey: "unknown",
+    batchingStrategy: "full_batch",
+    batchingLabel: "Full batch",
+    batchSize: null,
+    batchSizeKey: "unknown",
+    shuffleBatches: false,
+    batchRandomSeed: 42,
+    numEpochs: null,
+    numEpochsKey: "unknown",
     regularizationEnabled: null,
     regularizationType: "unknown",
     regularizationLambda: null,
@@ -89,6 +97,30 @@ const experiments = [
     numIterationsKey: "5000",
   }),
   createExperiment({
+    experimentName: "relu_128_128_128_normalized_minibatch_bs128_lr_005_20e",
+    modelName: "multi_layer_relu_classifier",
+    neuronsProfileLabel: "[128, 128, 128, 10]",
+    normalizePixels: true,
+    optimizer: "batch_gradient_descent",
+    learningRate: 0.05,
+    learningRateKey: "0.05",
+    numIterations: null,
+    numIterationsKey: "unknown",
+    batchingStrategy: "mini_batch",
+    batchingLabel: "Mini-batch",
+    batchSize: 128,
+    batchSizeKey: "128",
+    shuffleBatches: true,
+    batchRandomSeed: 42,
+    numEpochs: 20,
+    numEpochsKey: "20",
+    regularizationEnabled: false,
+    regularizationType: "none",
+    regularizationLambda: 0,
+    regularizationLambdaKey: "0",
+    regularizationLabel: "No regularization",
+  }),
+  createExperiment({
     experimentName: "unknown_legacy_experiment",
     modelName: "unknown_model",
     neuronsProfileLabel: "Unknown",
@@ -114,7 +146,10 @@ describe("filterExperiments", () => {
       modelNames: ["multi_layer_relu_classifier"],
     };
 
-    expect(filterExperiments(experiments, filters)).toEqual([experiments[2]]);
+    expect(filterExperiments(experiments, filters)).toEqual([
+      experiments[2],
+      experiments[3],
+    ]);
   });
 
   it("filters by architecture", () => {
@@ -135,6 +170,7 @@ describe("filterExperiments", () => {
     expect(filterExperiments(experiments, filters)).toEqual([
       experiments[1],
       experiments[2],
+      experiments[3],
     ]);
   });
 
@@ -153,7 +189,7 @@ describe("filterExperiments", () => {
       normalizationOptions: ["unknown"],
     };
 
-    expect(filterExperiments(experiments, filters)).toEqual([experiments[3]]);
+    expect(filterExperiments(experiments, filters)).toEqual([experiments[4]]);
   });
 
   it("filters by optimizer", () => {
@@ -166,6 +202,76 @@ describe("filterExperiments", () => {
       experiments[0],
       experiments[1],
       experiments[2],
+      experiments[3],
+    ]);
+  });
+
+  it("filters by batching strategy", () => {
+    const filters: DashboardFilters = {
+      ...emptyDashboardFilters,
+      batchingStrategies: ["mini_batch"],
+    };
+
+    expect(filterExperiments(experiments, filters)).toEqual([experiments[3]]);
+  });
+
+  it("filters by full-batch strategy", () => {
+    const filters: DashboardFilters = {
+      ...emptyDashboardFilters,
+      batchingStrategies: ["full_batch"],
+    };
+
+    expect(filterExperiments(experiments, filters)).toEqual([
+      experiments[0],
+      experiments[1],
+      experiments[2],
+      experiments[4],
+    ]);
+  });
+
+  it("filters by batch-size key", () => {
+    const filters: DashboardFilters = {
+      ...emptyDashboardFilters,
+      batchSizeKeys: ["128"],
+    };
+
+    expect(filterExperiments(experiments, filters)).toEqual([experiments[3]]);
+  });
+
+  it("filters by unknown batch-size key", () => {
+    const filters: DashboardFilters = {
+      ...emptyDashboardFilters,
+      batchSizeKeys: ["unknown"],
+    };
+
+    expect(filterExperiments(experiments, filters)).toEqual([
+      experiments[0],
+      experiments[1],
+      experiments[2],
+      experiments[4],
+    ]);
+  });
+
+  it("filters by epoch-count key", () => {
+    const filters: DashboardFilters = {
+      ...emptyDashboardFilters,
+      epochCountKeys: ["20"],
+    };
+
+    expect(filterExperiments(experiments, filters)).toEqual([experiments[3]]);
+  });
+
+  it("filters by unknown epoch-count key", () => {
+    const filters: DashboardFilters = {
+      ...emptyDashboardFilters,
+      epochCountKeys: ["unknown"],
+    };
+
+    expect(filterExperiments(experiments, filters)).toEqual([
+      experiments[0],
+      experiments[1],
+      experiments[2],
+      experiments[4],
     ]);
   });
 
@@ -184,7 +290,10 @@ describe("filterExperiments", () => {
       regularizationOptions: ["none"],
     };
 
-    expect(filterExperiments(experiments, filters)).toEqual([experiments[0]]);
+    expect(filterExperiments(experiments, filters)).toEqual([
+      experiments[0],
+      experiments[3],
+    ]);
   });
 
   it("filters by regularization lambda key", () => {
@@ -215,7 +324,7 @@ describe("filterExperiments", () => {
       learningRateKeys: ["unknown"],
     };
 
-    expect(filterExperiments(experiments, filters)).toEqual([experiments[3]]);
+    expect(filterExperiments(experiments, filters)).toEqual([experiments[4]]);
   });
 
   it("filters by iteration-count key", () => {
@@ -233,7 +342,10 @@ describe("filterExperiments", () => {
       iterationCountKeys: ["unknown"],
     };
 
-    expect(filterExperiments(experiments, filters)).toEqual([experiments[3]]);
+    expect(filterExperiments(experiments, filters)).toEqual([
+      experiments[3],
+      experiments[4],
+    ]);
   });
 
   it("filters by experiment name", () => {
@@ -254,6 +366,17 @@ describe("filterExperiments", () => {
     };
 
     expect(filterExperiments(experiments, filters)).toEqual([experiments[2]]);
+  });
+
+  it("combines mini-batch filters with AND behavior", () => {
+    const filters: DashboardFilters = {
+      ...emptyDashboardFilters,
+      batchingStrategies: ["mini_batch"],
+      batchSizeKeys: ["128"],
+      epochCountKeys: ["20"],
+    };
+
+    expect(filterExperiments(experiments, filters)).toEqual([experiments[3]]);
   });
 
   it("returns no experiments when active filters conflict", () => {
@@ -277,7 +400,7 @@ describe("getFilterOptions", () => {
       {
         value: "multi_layer_relu_classifier",
         label: "multi_layer_relu_classifier",
-        count: 1,
+        count: 2,
       },
       {
         value: "one_hidden_layer_relu_classifier",
@@ -315,6 +438,11 @@ describe("getFilterOptions", () => {
         count: 1,
       },
       {
+        value: "[128, 128, 128, 10]",
+        label: "[128, 128, 128, 10]",
+        count: 1,
+      },
+      {
         value: "Unknown",
         label: "Unknown",
         count: 1,
@@ -327,7 +455,7 @@ describe("getFilterOptions", () => {
       {
         value: "normalized",
         label: "Normalized",
-        count: 2,
+        count: 3,
       },
       {
         value: "not_normalized",
@@ -347,12 +475,57 @@ describe("getFilterOptions", () => {
       {
         value: "batch_gradient_descent",
         label: "batch_gradient_descent",
-        count: 3,
+        count: 4,
       },
       {
         value: "unknown",
         label: "unknown",
         count: 1,
+      },
+    ]);
+  });
+
+  it("builds batching strategy options", () => {
+    expect(getFilterOptions(experiments, "batchingStrategies")).toEqual([
+      {
+        value: "full_batch",
+        label: "Full batch",
+        count: 4,
+      },
+      {
+        value: "mini_batch",
+        label: "Mini-batch",
+        count: 1,
+      },
+    ]);
+  });
+
+  it("builds batch-size options", () => {
+    expect(getFilterOptions(experiments, "batchSizeKeys")).toEqual([
+      {
+        value: "128",
+        label: "128",
+        count: 1,
+      },
+      {
+        value: "unknown",
+        label: "Unknown",
+        count: 4,
+      },
+    ]);
+  });
+
+  it("builds epoch-count options", () => {
+    expect(getFilterOptions(experiments, "epochCountKeys")).toEqual([
+      {
+        value: "20",
+        label: "20",
+        count: 1,
+      },
+      {
+        value: "unknown",
+        label: "Unknown",
+        count: 4,
       },
     ]);
   });
@@ -367,7 +540,7 @@ describe("getFilterOptions", () => {
       {
         value: "none",
         label: "No regularization",
-        count: 1,
+        count: 2,
       },
       {
         value: "unknown",
@@ -382,7 +555,7 @@ describe("getFilterOptions", () => {
       {
         value: "0",
         label: "0",
-        count: 1,
+        count: 2,
       },
       {
         value: "0.01",
@@ -399,6 +572,11 @@ describe("getFilterOptions", () => {
 
   it("builds learning-rate options using formatted labels", () => {
     expect(getFilterOptions(experiments, "learningRateKeys")).toEqual([
+      {
+        value: "0.05",
+        label: "0.05",
+        count: 1,
+      },
       {
         value: "0.1",
         label: "0.1",
@@ -432,13 +610,18 @@ describe("getFilterOptions", () => {
       {
         value: "unknown",
         label: "Unknown",
-        count: 1,
+        count: 2,
       },
     ]);
   });
 
   it("builds experiment-name options", () => {
     expect(getFilterOptions(experiments, "experimentNames")).toEqual([
+      {
+        value: "relu_128_128_128_normalized_minibatch_bs128_lr_005_20e",
+        label: "relu_128_128_128_normalized_minibatch_bs128_lr_005_20e",
+        count: 1,
+      },
       {
         value: "relu_128_128_normalized_lr_01_5k",
         label: "relu_128_128_normalized_lr_01_5k",
@@ -473,6 +656,9 @@ describe("hasActiveFilters", () => {
     "architectures",
     "normalizationOptions",
     "optimizers",
+    "batchingStrategies",
+    "batchSizeKeys",
+    "epochCountKeys",
     "regularizationOptions",
     "regularizationLambdaKeys",
     "learningRateKeys",

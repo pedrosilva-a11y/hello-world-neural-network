@@ -4,6 +4,13 @@ export type RawRegularizationConfig = {
   lambda?: number;
 };
 
+export type RawBatchingConfig = {
+  strategy?: string;
+  batch_size?: number | null;
+  shuffle?: boolean;
+  random_seed?: number;
+};
+
 export type RawExperimentSummary = {
   experiment_name?: string;
 
@@ -20,8 +27,10 @@ export type RawExperimentSummary = {
     training?: {
       learning_rate?: number;
       num_iterations?: number;
+      num_epochs?: number;
       optimizer?: string;
       regularization?: RawRegularizationConfig;
+      batching?: RawBatchingConfig;
     };
   };
 
@@ -37,6 +46,7 @@ export type RawExperimentSummary = {
       final_parameter_shapes?: Record<string, number[] | string>;
     };
     regularization?: RawRegularizationConfig;
+    batching?: RawBatchingConfig;
     data_shapes?: Record<string, number[] | string>;
   };
 
@@ -68,6 +78,15 @@ export type NormalizedExperiment = {
   learningRateKey: string;
   numIterations: number | null;
   numIterationsKey: string;
+
+  batchingStrategy: string;
+  batchingLabel: string;
+  batchSize: number | null;
+  batchSizeKey: string;
+  shuffleBatches: boolean | null;
+  batchRandomSeed: number | null;
+  numEpochs: number | null;
+  numEpochsKey: string;
 
   regularizationEnabled?: boolean | null;
   regularizationType?: string;

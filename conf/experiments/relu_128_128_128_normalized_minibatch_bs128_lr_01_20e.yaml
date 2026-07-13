@@ -1,0 +1,37 @@
+experiment_name: relu_128_128_128_normalized_minibatch_bs128_lr_01_20e
+data_loading:
+  training_path: data/train.csv
+  testing_path: data/test.csv
+  label_column: label
+preprocessing:
+  normalize_pixels: true
+  pixel_scale_value: 255.0
+data_splitting:
+  enabled: true
+  strategy: stratified
+  validation_size: 0.2
+  random_seed: 42
+model:
+  name: multi_layer_relu_classifier
+  input_size: 784
+  neurons_profile:
+  - 128
+  - 128
+  - 128
+  - 10
+training:
+  optimizer: batch_gradient_descent
+  learning_rate: 0.1
+  num_epochs: 20
+  batching:
+    strategy: mini_batch
+    batch_size: 128
+    shuffle: true
+    random_seed: 42
+  regularization:
+    enabled: false
+    type: none
+    lambda: 0.0
+outputs:
+  prediction_preview_size: 20
+  save_summary: true

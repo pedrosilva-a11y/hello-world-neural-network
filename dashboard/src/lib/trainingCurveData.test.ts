@@ -21,6 +21,16 @@ function createExperiment(
     learningRateKey: "unknown",
     numIterations: null,
     numIterationsKey: "unknown",
+
+    batchingStrategy: "full_batch",
+    batchingLabel: "Full batch",
+    batchSize: null,
+    batchSizeKey: "unknown",
+    shuffleBatches: false,
+    batchRandomSeed: 42,
+    numEpochs: null,
+    numEpochsKey: "unknown",
+
     trainLoss: [],
     validationLoss: [],
     trainAccuracy: [],
@@ -54,7 +64,11 @@ describe("training curve data", () => {
       }),
     ];
 
-    expect(getTrainingCurveExperiments(experiments, 2).map((item) => item.experimentName)).toEqual([
+    expect(
+      getTrainingCurveExperiments(experiments, 2).map(
+        (item) => item.experimentName,
+      ),
+    ).toEqual([
       "high",
       "middle",
     ]);

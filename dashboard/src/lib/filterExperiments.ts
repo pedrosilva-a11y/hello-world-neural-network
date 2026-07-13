@@ -6,6 +6,9 @@ export type DashboardFilters = {
   architectures: string[];
   normalizationOptions: string[];
   optimizers: string[];
+  batchingStrategies: string[];
+  batchSizeKeys: string[];
+  epochCountKeys: string[];
   regularizationOptions: string[];
   regularizationLambdaKeys: string[];
   learningRateKeys: string[];
@@ -24,6 +27,9 @@ export const emptyDashboardFilters: DashboardFilters = {
   architectures: [],
   normalizationOptions: [],
   optimizers: [],
+  batchingStrategies: [],
+  batchSizeKeys: [],
+  epochCountKeys: [],
   regularizationOptions: [],
   regularizationLambdaKeys: [],
   learningRateKeys: [],
@@ -92,6 +98,12 @@ function getExperimentFilterValue(
       return getNormalizationKey(experiment);
     case "optimizers":
       return experiment.optimizer;
+    case "batchingStrategies":
+      return experiment.batchingStrategy;
+    case "batchSizeKeys":
+      return experiment.batchSizeKey;
+    case "epochCountKeys":
+      return experiment.numEpochsKey;
     case "regularizationOptions":
       return getRegularizationKey(experiment);
     case "regularizationLambdaKeys":
@@ -112,6 +124,12 @@ function getOptionLabel(
   switch (filterKey) {
     case "normalizationOptions":
       return getNormalizationLabel(getNormalizationKey(experiment));
+    case "batchingStrategies":
+      return experiment.batchingLabel;
+    case "batchSizeKeys":
+      return formatNumber(experiment.batchSize);
+    case "epochCountKeys":
+      return formatNumber(experiment.numEpochs);
     case "regularizationOptions":
       return getRegularizationLabel(getRegularizationKey(experiment));
     case "regularizationLambdaKeys":
@@ -146,6 +164,12 @@ export function filterExperiments(
         getNormalizationKey(experiment),
       ) &&
       selectedFilterAllowsValue(filters.optimizers, experiment.optimizer) &&
+      selectedFilterAllowsValue(
+        filters.batchingStrategies,
+        experiment.batchingStrategy,
+      ) &&
+      selectedFilterAllowsValue(filters.batchSizeKeys, experiment.batchSizeKey) &&
+      selectedFilterAllowsValue(filters.epochCountKeys, experiment.numEpochsKey) &&
       selectedFilterAllowsValue(
         filters.regularizationOptions,
         getRegularizationKey(experiment),

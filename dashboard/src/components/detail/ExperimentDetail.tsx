@@ -127,6 +127,22 @@ export function ExperimentDetail({
             value={selectedExperiment.optimizer}
           />
           <DetailMetric
+            label="Batching"
+            value={selectedExperiment.batchingLabel}
+          />
+          <DetailMetric
+            label="Batch size"
+            value={formatNumber(selectedExperiment.batchSize)}
+          />
+          <DetailMetric
+            label="Epochs"
+            value={formatNumber(selectedExperiment.numEpochs)}
+          />
+          <DetailMetric
+            label="Shuffle batches"
+            value={formatBoolean(selectedExperiment.shuffleBatches)}
+          />
+          <DetailMetric
             label="Learning rate"
             value={formatNumber(selectedExperiment.learningRate)}
           />
